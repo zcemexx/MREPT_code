@@ -13,5 +13,3 @@ nnUNet_raw/
 
 # 忽略 Mac 系统文件
 .DS_Store
-
-git remote set-url origin git@github.com/zcemexx/MREPT_code.git
