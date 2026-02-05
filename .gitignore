@@ -1,0 +1,17 @@
+# 忽略所有数据文件
+*.nii
+*.nii.gz
+*.zip
+*.tar.gz
+
+# 忽略文件夹
+data/
+toolboxes/
+logs/
+__pycache__/
+nnUNet_raw/
+
+# 忽略 Mac 系统文件
+.DS_Store
+
+git remote set-url origin git@github.com/zcemexx/MREPT_code.git

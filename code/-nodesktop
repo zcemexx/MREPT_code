@@ -1,0 +1,320 @@
+
+                            < M A T L A B (R) >
+                  Copyright 1984-2023 The MathWorks, Inc.
+             R2023a Update 5 (9.14.0.2337262) 64-bit (glnxa64)
+                               July 24, 2023
+
+ 
+To get started, type doc.
+For product information, visit www.mathworks.com.
+ 
+Starting parallel pool (parpool) using the 'local' profile ...
+Connected to parallel pool with 8 workers.
+找到 84 个数据集，开始批量处理...
+
+[Case 1/84] 处理中: M1
+   -> SNR: 90.82
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+   -> Metrics: MAE=0.2340, RMSE=0.3960, SSIM=0.9477
+
+[Case 2/84] 处理中: M10
+   -> SNR: 17.10
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
+[Warning: No integration kernel size provided, running Laplacian-form EPT.] 
+[> In conductivityMapping (line 65)
+In labelv1_4 (line 137)] 
+Magnitude and segmentation provided, using Mag+Seg EPT.
+Estimating magnitude noise level from normalised magnitude image.
