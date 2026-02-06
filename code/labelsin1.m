@@ -1,12 +1,13 @@
-%% ===================== Phase 2: Myriad Job Array Version =====================
-% Modification: Adapted for Slurm Job Arrays.
-% Each job processes ONE file based on SLURM_ARRAY_TASK_ID.
-% Now saves 'task_id' for reproducibility and tracking.
+%% ===================== Phase 2: SGE Job Array Version (Myriad Legacy) =====================
+% Modification: Adapted for SGE (Sun Grid Engine) Job Arrays.
+% Environment: UCL Myriad (Legacy/RHEL 7.9 Nodes)
+% Logic: Each job processes ONE file based on SGE_TASK_ID.
 
 clear; clc;
-% close all; % 在集群模式下通常不需要关闭窗口，因为我们不显示它们
+% close all; % 集群模式下保持注释
 
 % --- 1. 路径配置 (Absolute Paths) ---
+% 请确保这些路径在你的 Legacy 环境下是可访问的
 addpath('/myriadfs/home/zcemexx/projects/MREPT_code/functions');
 addpath(genpath('/myriadfs/home/zcemexx/projects/MREPT_code/toolboxes'));
 
@@ -22,7 +23,7 @@ labelsTr     = fullfile(outputBase, 'labelsTr');
 metricsDir   = fullfile(baseDir, 'metrics');
 figuresDir   = fullfile(metricsDir, 'figures');
 
-% 确保文件夹存在 (suppress potential warnings in high concurrency)
+% 确保文件夹存在
 if ~isfolder(baseDir); mkdir(baseDir); end
 if ~isfolder(imagesTr); mkdir(imagesTr); end
 if ~isfolder(labelsTr); mkdir(labelsTr); end
@@ -30,15 +31,16 @@ if ~isfolder(metricsDir); mkdir(metricsDir); end
 if ~isfolder(noisyDataDir); mkdir(noisyDataDir); end
 if ~isfolder(figuresDir); mkdir(figuresDir); end
 
-% --- 2. 获取当前任务 ID (Job Array Core) ---
-% Myriad 会自动传递 SLURM_ARRAY_TASK_ID 环境变量
-task_id_str = getenv('SLURM_ARRAY_TASK_ID');
-if isempty(task_id_str)
+% --- 2. 获取当前任务 ID (SGE Job Array Core) ---
+% 【核心修改】SGE 使用 SGE_TASK_ID
+task_id_str = getenv('SGE_TASK_ID');
+
+if isempty(task_id_str) || strcmp(task_id_str, 'undefined')
     task_id = 1;
-    fprintf('警告: 未检测到 Slurm 阵列 ID，默认运行第 1 个文件 (本地测试模式)\n');
+    fprintf('警告: 未检测到 SGE 阵列 ID，默认运行第 1 个文件 (本地/单机测试模式)\n');
 else
     task_id = str2double(task_id_str);
-    fprintf('检测到 Slurm Job Array，正在处理第 %d 个任务\n', task_id);
+    fprintf('检测到 SGE Job Array，正在处理第 %d 个任务\n', task_id);
 end
 
 % --- 3. 获取文件列表并定位当前任务的文件 ---
@@ -61,11 +63,20 @@ fprintf('正在处理 Case: %s (Task ID: %d)\n', caseName, task_id);
 % --- 4. 并行池配置 (针对内部循环加速) ---
 poolObj = gcp('nocreate');
 if isempty(poolObj)
-    nSlots = str2double(getenv('SLURM_CPUS_PER_TASK'));
-    if isnan(nSlots), nSlots = 1; end
+    % 【核心修改】SGE 使用 NSLOTS 环境变量来指示申请了多少核
+    nSlotsStr = getenv('NSLOTS');
+    nSlots = str2double(nSlotsStr);
+
+    if isnan(nSlots) || nSlots < 1
+        nSlots = 1;
+    end
+
     if nSlots > 1
+        % 在 SGE 环境下启动并行池通常建议显式指定核心数
         parpool('local', nSlots);
-        fprintf('并行池已启动，核心数: %d\n', nSlots);
+        fprintf('并行池已启动，核心数 (NSLOTS): %d\n', nSlots);
+    else
+        fprintf('运行在单核模式。\n');
     end
 end
 
@@ -117,7 +128,7 @@ end
 mask = (tissueMask > 0);
 
 % --- 5.2 加噪 (Reproducible Noise) ---
-rng(task_id); % 【关键】用 Task ID 固定随机数种子，保证可复现性
+rng(task_id); % 【关键】用 Task ID 固定随机数种子
 this_snr_log = snr_range_log(1) + (snr_range_log(2)-snr_range_log(1)) * rand();
 this_snr     = 10^this_snr_log;
 
@@ -127,10 +138,9 @@ noisy_complex = gen_noise_complex(complex_signal, this_snr, mask);
 phi0_noisy      = angle(noisy_complex);
 magnitude_noisy = abs(noisy_complex);
 
-% 保存 Noisy Data (包含 task_id)
+% 保存 Noisy Data
 nFileName = strrep(fileName, 'M', 'N');
 if ~startsWith(nFileName, 'N'); nFileName = ['N_', fileName]; end
-% 【修改】保存 task_id 到数据文件，以便后续知道这数据是用哪个种子生成的
 save(fullfile(noisyDataDir, [nFileName, '.mat']), 'phi0_noisy', 'magnitude_noisy', 'tissueMask', 'this_snr', 'task_id');
 
 % --- 5.3 穷举搜索 (并行版本) ---
@@ -138,26 +148,24 @@ err_stack  = inf(nx, ny, nz, nR, 'single');
 cond_stack = zeros(nx, ny, nz, nR, 'single');
 Parameters.B0 = 3; Parameters.VoxelSize = [1 1 1];
 
-% 确保在使用 parfor 之前，切片变量已经初始化
+% 确保 nSlots > 1 时才真正并行，否则 parfor 会退化为 for 但有额外开销
+% 但为了代码简洁，保留 parfor 关键字，MATLAB 会自动处理单核情况
 parfor ir = 1:nR
     r = radius_list(ir);
     params_r = Parameters;
     params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
 
-    % 执行重建
     [cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ...
         'magnitude', magnitude_noisy, 'segmentation', tissueMask, 'estimatenoise', estimatenoise);
 
     if do_filter; cond_r(cond_r < 0 | cond_r > 10) = NaN; end
 
-    % 将结果存入 stack (MATLAB 会自动处理这种切片变量的并行写入)
     cond_stack(:,:,:,ir) = cond_r;
 
     diff_val = abs(cond_r - sigma_gt);
     bad_pixels = ~mask | isnan(cond_r);
 
     if doSmoothing
-        % 注意：masked_smooth_error 必须是全自包含的函数，不能依赖非全局变量
         temp_err = diff_val;
         temp_err(bad_pixels) = 0;
         err_stack(:,:,:,ir) = masked_smooth_error(temp_err, tissueMask);
@@ -191,7 +199,7 @@ save_nii_gz(phi0_noisy,  fullfile(imagesTr, [caseName, '_0000.nii.gz']));
 save_nii_gz(tissueMask,  fullfile(imagesTr, [caseName, '_0001.nii.gz']));
 save_nii_gz(label_final, fullfile(labelsTr, [caseName, '.nii.gz']));
 
-% --- 5.6 Metrics & Log (Save Individual File) ---
+% --- 5.6 Metrics & Log ---
 mae_val = mean(min_err(mask));
 diff_sq = (cond_optimal - sigma_gt).^2;
 rmse_val = sqrt(mean(diff_sq(mask)));
@@ -204,16 +212,14 @@ vol_gt_ssim  = sigma_gt;     vol_gt_ssim(~mask) = 0;
 
 fprintf('Metrics -> MAE: %.4f, RMSE: %.4f, SSIM: %.4f\n', mae_val, rmse_val, ssim_val);
 
-% 保存单独的 Metric 文件
 metric_struct = struct();
 metric_struct.CaseID = caseName;
-metric_struct.TaskID = task_id;  % 【修改】保存 task_id 到指标文件，方便 Log 追踪
+metric_struct.TaskID = task_id;
 metric_struct.SNR = this_snr;
 metric_struct.MAE = mae_val;
 metric_struct.RMSE = rmse_val;
 metric_struct.SSIM = ssim_val;
 
-% 文件名包含 CaseName，避免冲突
 save(fullfile(metricsDir, sprintf('metric_%s.mat', caseName)), 'metric_struct');
 
 % --- 5.7 可视化 ---
@@ -229,7 +235,6 @@ if doPlotting
     plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 1, 'Sagittal', title_str, caseName, this_snr, figuresDir);
     plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 2, 'Coronal', title_str, caseName, this_snr, figuresDir);
 
-    % Compare Plot
     h4 = figure('Visible', 'off'); set(h4, 'Position', [100, 100, 1000, 400]);
     subplot(1,3,1); imagesc(sigma_gt(:,:,center(3))); axis image off; colormap(gca, 'jet'); colorbar; title('Ground Truth'); caxis([0 2.5]);
     subplot(1,3,2); imagesc(cond_optimal(:,:,center(3))); axis image off; colormap(gca, 'jet'); colorbar; title('Optimal Recon'); caxis([0 2.5]);

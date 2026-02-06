@@ -1,27 +1,30 @@
-#!/bin/bash
-#SBATCH --job-name=MatlabBatch
-#SBATCH --output=/myriadfs/home/zcemexx/Scratch/logs/job_%A_%a.out  # 日志存 Scratch
-#SBATCH --error=/myriadfs/home/zcemexx/Scratch/logs/job_%A_%a.err
-#SBATCH --time=10:00:00               # 预计运行时间
-#SBATCH --mem=8G                      # 内存
-#SBATCH --cpus-per-task=8
-#SBATCH --array=84                 # 【注意】运行前请将其修改为 data 文件夹下的实际文件数量！
-#SBATCH --workdir=/myriadfs/home/zcemexx/Scratch  # 工作目录
+#!/bin/bash -l
+#$ -S /bin/bash
+#$ -N MatlabBatch              # 作业名称
+#$ -l h_rt=9:59:58             # 运行时间 (时:分:秒)
+#$ -l mem=8G                   # 内存申请
+#$ -pe smp 8                   # 申请 4 个 CPU 核心
+#$ -l tmpfs=10G                # 临时空间
+#$ -t 1-84                   # 【关键】任务阵列 (Array Task) 1 到 5602
+#$ -wd /myriadfs/home/zcemexx/Scratch  # 工作目录 (Working Directory)
+#$ -o /myriadfs/home/zcemexx/Scratch/logs/  # 日志目录 (自动命名)
+#$ -e /myriadfs/home/zcemexx/Scratch/logs/  # 错误日志目录 (自动命名)
 
-# 1. 建立日志目录 (确保可写)
-mkdir -p /myriadfs/home/zcemexx/Scratch/logs
+# SGE 必须显式加载环境
+module unload compilers mpi
+module load matlab
 
-# 2. 加载模块
-module purge
-module load matlab  # 推荐加上具体版本号
-
-# 3. 设置绝对代码路径
+# 设置代码路径
 CODE_DIR="/myriadfs/home/zcemexx/projects/MREPT_code/code"
 
-# 4. 运行 MATLAB
-echo "Starting Task ID: $SLURM_ARRAY_TASK_ID"
+echo "Starting SGE Task ID: $SGE_TASK_ID"
 
-# 进入代码目录 -> 运行 aminos_batch.m -> 退出
+# 运行 MATLAB
+# 注意：SGE 的任务 ID 变量是 $SGE_TASK_ID (Slurm 是 SLURM_ARRAY_TASK_ID)
+# 我们需要把 SGE_TASK_ID 传给 MATLAB 或者让 MATLAB 自己读 (你的代码能读环境变量吗？)
+# 鉴于你的 MATLAB 代码是读文件列表的，我们需要一种机制把 ID 传进去。
+# 最简单的方法是：让 MATLAB 知道它是第几个任务。
+
 matlab -nodisplay -nodesktop -r "cd('$CODE_DIR'); try, run('labelsin1.m'); catch e, disp(e.message); exit(1); end, exit(0);"
 
-echo "Task $SLURM_ARRAY_TASK_ID finished."
+echo "Task $SGE_TASK_ID finished."

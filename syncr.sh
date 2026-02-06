@@ -15,11 +15,11 @@ REMOTE_REPO_DIR="~/projects/MREPT_code"
 
 # 【关键】使用 bash -l -c 加载 Slurm 环境，否则会报 sbatch command not found
 # 假设 submit_array.sh 在根目录。如果在 others 文件夹，请改为 others/submit_array.sh
-ssh -T $REMOTE_HOST "bash -l -c 'cd $REMOTE_REPO_DIR && sbatch sub_array.sh'"
+ssh -T $REMOTE_HOST "bash -l -c 'cd $REMOTE_REPO_DIR && qsub sub_array.sh'"
 
 if [ $? -eq 0 ]; then
     echo "✅ 作业提交成功！"
-    echo "💡 查询命令: ssh myriad squeue -u zcemexx"
+    echo "💡 查询命令: ssh myriad qstat"
 else
     echo "❌ 作业提交失败。"
 fi
