@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH --job-name=MREPT_Run
+#SBATCH --output=logs/out_%j.log     # 日志存放在项目 logs 文件夹
+#SBATCH --error=logs/err_%j.log
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4            # 根据你的计算需求调整
+#SBATCH --mem=16G                    # 内存需求
+#SBATCH --time=04:00:00              # 预计运行 4 小时
+#SBATCH --workdir=/scratch/zcemexx/MREPT_job  # 强制要求：在 Scratch 运行
+
+# 1. 确保必要的目录存在
+mkdir -p $HOME/projects/MREPT_code/logs
+SCRATCH_PATH="/scratch/zcemexx/MREPT_job"
+mkdir -p $SCRATCH_PATH
+
+# 2. 加载 Myriad 上的软件环境 (例如你之前用的 git)
+module purge
+module load python/3.9  # 或者是 matlab/R2023a 等，取决于你的代码
+
+# 3. 运行你的核心程序
+# 注意：代码路径在 $HOME，但运行产生的大数据要写进 $SCRATCH_PATH
+python ~/projects/MREPT_code/main.py --output_dir $SCRATCH_PATH
