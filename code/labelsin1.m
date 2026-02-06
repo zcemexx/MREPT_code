@@ -133,31 +133,38 @@ if ~startsWith(nFileName, 'N'); nFileName = ['N_', fileName]; end
 % 【修改】保存 task_id 到数据文件，以便后续知道这数据是用哪个种子生成的
 save(fullfile(noisyDataDir, [nFileName, '.mat']), 'phi0_noisy', 'magnitude_noisy', 'tissueMask', 'this_snr', 'task_id');
 
-% --- 5.3 穷举搜索 ---
+% --- 5.3 穷举搜索 (并行版本) ---
 err_stack  = inf(nx, ny, nz, nR, 'single');
 cond_stack = zeros(nx, ny, nz, nR, 'single');
 Parameters.B0 = 3; Parameters.VoxelSize = [1 1 1];
 
-for ir = 1:nR
+% 确保在使用 parfor 之前，切片变量已经初始化
+parfor ir = 1:nR
     r = radius_list(ir);
     params_r = Parameters;
     params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
 
+    % 执行重建
     [cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ...
         'magnitude', magnitude_noisy, 'segmentation', tissueMask, 'estimatenoise', estimatenoise);
 
     if do_filter; cond_r(cond_r < 0 | cond_r > 10) = NaN; end
 
+    % 将结果存入 stack (MATLAB 会自动处理这种切片变量的并行写入)
     cond_stack(:,:,:,ir) = cond_r;
+
     diff_val = abs(cond_r - sigma_gt);
     bad_pixels = ~mask | isnan(cond_r);
 
     if doSmoothing
-        diff_val(bad_pixels) = 0;
-        err_stack(:,:,:,ir) = masked_smooth_error(diff_val, tissueMask);
+        % 注意：masked_smooth_error 必须是全自包含的函数，不能依赖非全局变量
+        temp_err = diff_val;
+        temp_err(bad_pixels) = 0;
+        err_stack(:,:,:,ir) = masked_smooth_error(temp_err, tissueMask);
     else
-        diff_val(bad_pixels) = inf;
-        err_stack(:,:,:,ir) = diff_val;
+        temp_err = diff_val;
+        temp_err(bad_pixels) = inf;
+        err_stack(:,:,:,ir) = temp_err;
     end
 end
 
