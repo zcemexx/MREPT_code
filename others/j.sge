@@ -1,0 +1,19 @@
+#!/bin/bash -l
+#$ -N Label_EPT_Job
+#$ -l h_rt=23:59:58
+#$ -l mem=8G
+#$ -pe smp 8
+#$ -cwd
+#$ -j y
+#$ -m abe
+#$ -M zcemexx@ucl.ac.uk
+
+# 1. 环境加载 (改为通用加载，避开版本名错误)
+module load matlab
+
+# 2. 切换路径
+cd /myriadfs/home/zcemexx/projects/MREPT_code/code
+
+# 3. 运行指令
+matlab -nodisplay -nosplash -nodesktop -r "labelv1_4; exit" -logfile
+"matlab_runtime.log"
