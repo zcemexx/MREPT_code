@@ -9,6 +9,8 @@
 #$ -wd /myriadfs/home/zcemexx/Scratch  # 工作目录
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -e /myriadfs/home/zcemexx/Scratch/logs/
+#$ -m abe
+#$ -M zcemexx@ucl.ac.uk
 
 # 1. 加载环境
 module unload compilers mpi
