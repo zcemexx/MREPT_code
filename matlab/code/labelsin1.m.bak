@@ -20,7 +20,6 @@ imagesTr     = fullfile(outputBase, 'imagesTr');
 labelsTr     = fullfile(outputBase, 'labelsTr');
 metricsDir   = fullfile(baseDir, 'metrics');
 figuresDir   = fullfile(metricsDir, 'figures');
-plotCacheDir = fullfile(metricsDir, 'plot_cache');
 
 % 确保文件夹存在
 if ~isfolder(baseDir); mkdir(baseDir); end
@@ -29,7 +28,6 @@ if ~isfolder(labelsTr); mkdir(labelsTr); end
 if ~isfolder(metricsDir); mkdir(metricsDir); end
 if ~isfolder(noisyDataDir); mkdir(noisyDataDir); end
 if ~isfolder(figuresDir); mkdir(figuresDir); end
-if ~isfolder(plotCacheDir); mkdir(plotCacheDir); end
 
 % --- 2. 获取当前任务 ID ---
 task_id_str = getenv('SGE_TASK_ID');
@@ -237,54 +235,13 @@ if doPlotting
     map_mae    = abs(cond_optimal - sigma_gt); map_mae(~mask) = 0;
     map_rmse   = map_mae.^2;
     map_ssim   = ssim_map; map_ssim(~mask) = 0;
-    if any(mask(:))
-        mae_vals  = map_mae(mask);
-        rmse_vals = map_rmse(mask);
-        ssim_vals = map_ssim(mask);
-        metricLimits = [
-            min(mae_vals),  max(mae_vals);
-            min(rmse_vals), max(rmse_vals);
-            min(ssim_vals), max(ssim_vals)
-        ];
-    else
-        metricLimits = [0, 1; 0, 1; 0, 1];
-    end
-
-    for ii = 1:3
-        if ~all(isfinite(metricLimits(ii,:)))
-            metricLimits(ii,:) = [0, 1];
-        elseif metricLimits(ii,1) == metricLimits(ii,2)
-            metricLimits(ii,2) = metricLimits(ii,1) + 1e-6;
-        end
-    end
-
     center = round([nx, ny, nz] ./ 2);
     title_str = sprintf('SNR: %.1f | MAE: %.3f | RMSE: %.3f | SSIM: %.3f', this_snr, mae_val, rmse_val, ssim_val);
 
-    % 保存重绘缓存：用于后处理阶段按全体 case 的全局色轴统一重绘
-    viewDims = [3, 1, 2];
-    viewNames = {'Axial', 'Sagittal', 'Coronal'};
-    plotCache = struct();
-    plotCache.caseName = caseName;
-    plotCache.snr = this_snr;
-    plotCache.title = title_str;
-    plotCache.metricLimitsLocal = metricLimits;
-    for iv = 1:3
-        dimNow = viewDims(iv);
-        vStruct = struct();
-        vStruct.name = viewNames{iv};
-        vStruct.radius = squeeze_slice(map_radius, dimNow, center);
-        vStruct.mae = squeeze_slice(map_mae, dimNow, center);
-        vStruct.rmse = squeeze_slice(map_rmse, dimNow, center);
-        vStruct.ssim = squeeze_slice(map_ssim, dimNow, center);
-        plotCache.views(iv) = vStruct;
-    end
-    save(fullfile(plotCacheDir, sprintf('plotcache_%s.mat', caseName)), 'plotCache');
-
     % 确保 plot_metric_view 能够接受路径
-    plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 3, 'Axial', title_str, caseName, this_snr, figuresDir, metricLimits);
-    plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 1, 'Sagittal', title_str, caseName, this_snr, figuresDir, metricLimits);
-    plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 2, 'Coronal', title_str, caseName, this_snr, figuresDir, metricLimits);
+    plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 3, 'Axial', title_str, caseName, this_snr, figuresDir);
+    plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 1, 'Sagittal', title_str, caseName, this_snr, figuresDir);
+    plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 2, 'Coronal', title_str, caseName, this_snr, figuresDir);
 
     h4 = figure('Visible', 'off'); set(h4, 'Position', [100, 100, 1000, 400]);
     subplot(1,3,1); imagesc(sigma_gt(:,:,center(3))); axis image off; colormap(gca, 'jet'); colorbar; title('Ground Truth'); caxis([0 2.5]);
