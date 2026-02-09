@@ -1,15 +1,13 @@
-%% ===================== Phase 2: SGE Job Array Version (Myriad Legacy) =====================
-% Modification: Adapted for SGE (Sun Grid Engine) Job Arrays.
-% Environment: UCL Myriad (Legacy/RHEL 7.9 Nodes)
-% Logic: Each job processes ONE file based on SGE_TASK_ID.
+%% ===================== Phase 2: SGE Job Array Version (Myriad Fixed) =====================
+% Modification: Fixed Indexing Logic & Removed ACFS Backup
+% Logic: Each job processes ONE file based on SGE_TASK_ID explicitly.
 
 clear; clc;
 % close all; % 集群模式下保持注释
 
-% --- 1. 路径配置 (Absolute Paths) ---
-% 请确保这些路径在你的 Legacy 环境下是可访问的
-addpath('/myriadfs/home/zcemexx/projects/MREPT_code/functions');
-addpath(genpath('/myriadfs/home/zcemexx/projects/MREPT_code/toolboxes'));
+% --- 1. 路径配置 ---
+addpath('/myriadfs/home/zcemexx/projects/MREPT_code/matlab/functions');
+addpath(genpath('/myriadfs/home/zcemexx/projects/MREPT_code/matlab/toolboxes'));
 
 projectRoot  = '/myriadfs/home/zcemexx/Scratch';
 datasetName  = 'Dataset001_EPT';
@@ -31,8 +29,7 @@ if ~isfolder(metricsDir); mkdir(metricsDir); end
 if ~isfolder(noisyDataDir); mkdir(noisyDataDir); end
 if ~isfolder(figuresDir); mkdir(figuresDir); end
 
-% --- 2. 获取当前任务 ID (SGE Job Array Core) ---
-% 【核心修改】SGE 使用 SGE_TASK_ID
+% --- 2. 获取当前任务 ID ---
 task_id_str = getenv('SGE_TASK_ID');
 
 if isempty(task_id_str) || strcmp(task_id_str, 'undefined')
@@ -43,27 +40,37 @@ else
     fprintf('检测到 SGE Job Array，正在处理第 %d 个任务\n', task_id);
 end
 
-% --- 3. 获取文件列表并定位当前任务的文件 ---
-fileList = dir(fullfile(inputDataDir, 'M*.mat'));
-nFiles = numel(fileList);
+% --- 3. 【核心修复】直接通过 Task ID 构造文件名 ---
+% 旧逻辑使用 dir() 会导致字母顺序排序 (M1, M10, M100...)，导致 Task ID 与文件名不匹配。
+% 新逻辑：强制 Task 1 -> M1.mat, Task 84 -> M84.mat
 
-if task_id > nFiles
-    fprintf('任务 ID (%d) 超过文件总数 (%d)，退出。\n', task_id, nFiles);
-    return;
+caseName = sprintf('M%d', task_id);       % 例如: M84
+currentFileName = [caseName, '.mat'];     % 例如: M84.mat
+currentFilePath = fullfile(inputDataDir, currentFileName);
+
+% 检查文件是否存在，防止 Task ID 超出范围或文件缺失
+if ~isfile(currentFilePath)
+    fprintf('错误：文件 %s 不存在！\n', currentFilePath);
+    % 尝试以 3 位数字格式再次检查 (例如 M084.mat)
+    caseNameAlt = sprintf('M%03d', task_id);
+    currentFileNameAlt = [caseNameAlt, '.mat'];
+    currentFilePathAlt = fullfile(inputDataDir, currentFileNameAlt);
+
+    if isfile(currentFilePathAlt)
+        fprintf('找到替代文件名: %s\n', currentFileNameAlt);
+        currentFilePath = currentFilePathAlt;
+        caseName = caseNameAlt;
+        currentFileName = currentFileNameAlt;
+    else
+        error('无法找到对应 Task ID %d 的输入文件。请检查文件名格式 (M1.mat vs M001.mat)。', task_id);
+    end
 end
-
-% 直接定位到当前要处理的那一个文件
-currentFileStruct = fileList(task_id);
-currentFilePath = fullfile(inputDataDir, currentFileStruct.name);
-[~, fileName, ~] = fileparts(currentFileStruct.name);
-caseName = fileName;
 
 fprintf('正在处理 Case: %s (Task ID: %d)\n', caseName, task_id);
 
-% --- 4. 并行池配置 (针对内部循环加速) ---
+% --- 4. 并行池配置 ---
 poolObj = gcp('nocreate');
 if isempty(poolObj)
-    % 【核心修改】SGE 使用 NSLOTS 环境变量来指示申请了多少核
     nSlotsStr = getenv('NSLOTS');
     nSlots = str2double(nSlotsStr);
 
@@ -72,7 +79,7 @@ if isempty(poolObj)
     end
 
     if nSlots > 1
-        % 在 SGE 环境下启动并行池通常建议显式指定核心数
+        % 使用 local profile
         parpool('local', nSlots);
         fprintf('并行池已启动，核心数 (NSLOTS): %d\n', nSlots);
     else
@@ -94,7 +101,7 @@ snr_range_log    = log10(snr_range_linear);
 radius_list      = 1:30;
 nR               = numel(radius_list);
 
-% ===================== 处理逻辑 (Single File) =====================
+% ===================== 处理逻辑 =====================
 
 % --- 5.1 加载数据 ---
 data = load(currentFilePath);
@@ -127,8 +134,8 @@ end
 [nx, ny, nz] = size(phi0_raw);
 mask = (tissueMask > 0);
 
-% --- 5.2 加噪 (Reproducible Noise) ---
-rng(task_id); % 【关键】用 Task ID 固定随机数种子
+% --- 5.2 加噪 ---
+rng(task_id); % 固定随机种子
 this_snr_log = snr_range_log(1) + (snr_range_log(2)-snr_range_log(1)) * rand();
 this_snr     = 10^this_snr_log;
 
@@ -138,23 +145,22 @@ noisy_complex = gen_noise_complex(complex_signal, this_snr, mask);
 phi0_noisy      = angle(noisy_complex);
 magnitude_noisy = abs(noisy_complex);
 
-% 保存 Noisy Data
-nFileName = strrep(fileName, 'M', 'N');
-if ~startsWith(nFileName, 'N'); nFileName = ['N_', fileName]; end
-save(fullfile(noisyDataDir, [nFileName, '.mat']), 'phi0_noisy', 'magnitude_noisy', 'tissueMask', 'this_snr', 'task_id');
+% 保存 Noisy Data (到 Scratch)
+nFileName = strrep(currentFileName, 'M', 'N');
+if ~startsWith(nFileName, 'N'); nFileName = ['N_', currentFileName]; end
+save(fullfile(noisyDataDir, nFileName), 'phi0_noisy', 'magnitude_noisy', 'tissueMask', 'this_snr', 'task_id');
 
-% --- 5.3 穷举搜索 (并行版本) ---
+% --- 5.3 穷举搜索 ---
 err_stack  = inf(nx, ny, nz, nR, 'single');
 cond_stack = zeros(nx, ny, nz, nR, 'single');
 Parameters.B0 = 3; Parameters.VoxelSize = [1 1 1];
 
-% 确保 nSlots > 1 时才真正并行，否则 parfor 会退化为 for 但有额外开销
-% 但为了代码简洁，保留 parfor 关键字，MATLAB 会自动处理单核情况
 parfor ir = 1:nR
     r = radius_list(ir);
     params_r = Parameters;
     params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
 
+    % 注意：确保你的 conductivityMapping 函数能处理 inf/nan
     [cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ...
         'magnitude', magnitude_noisy, 'segmentation', tissueMask, 'estimatenoise', estimatenoise);
 
@@ -194,7 +200,7 @@ else
 end
 label_final = uint8(round(radiusMap_refined));
 
-% --- 5.5 保存 NIfTI ---
+% --- 5.5 保存 NIfTI (到 Scratch) ---
 save_nii_gz(phi0_noisy,  fullfile(imagesTr, [caseName, '_0000.nii.gz']));
 save_nii_gz(tissueMask,  fullfile(imagesTr, [caseName, '_0001.nii.gz']));
 save_nii_gz(label_final, fullfile(labelsTr, [caseName, '.nii.gz']));
@@ -220,6 +226,7 @@ metric_struct.MAE = mae_val;
 metric_struct.RMSE = rmse_val;
 metric_struct.SSIM = ssim_val;
 
+% 保存 Metrics (到 Scratch)
 save(fullfile(metricsDir, sprintf('metric_%s.mat', caseName)), 'metric_struct');
 
 % --- 5.7 可视化 ---
@@ -229,8 +236,9 @@ if doPlotting
     map_rmse   = map_mae.^2;
     map_ssim   = ssim_map; map_ssim(~mask) = 0;
     center = round([nx, ny, nz] ./ 2);
-    title_str = sprintf('SNR: %.1f | MAE: %.3f', this_snr, mae_val);
+    title_str = sprintf('SNR: %.1f | MAE: %.3f | RMSE: %.3f | SSIM: %.3f', this_snr, mae_val, rmse_val, ssim_val);
 
+    % 确保 plot_metric_view 能够接受路径
     plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 3, 'Axial', title_str, caseName, this_snr, figuresDir);
     plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 1, 'Sagittal', title_str, caseName, this_snr, figuresDir);
     plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 2, 'Coronal', title_str, caseName, this_snr, figuresDir);
