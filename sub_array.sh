@@ -9,7 +9,7 @@
 #$ -wd /myriadfs/home/zcemexx/Scratch  # 工作目录
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -e /myriadfs/home/zcemexx/Scratch/logs/
-#$ -m abeq
+#$ -m bea
 #$ -M zcemexx@ucl.ac.uk
 
 # 1. 加载环境

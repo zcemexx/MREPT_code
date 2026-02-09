@@ -7,7 +7,7 @@
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -e /myriadfs/home/zcemexx/Scratch/logs/
-#$ -m abeq
+#$ -m bea
 #$ -M zcemexx@ucl.ac.uk
 
 module unload compilers mpi
