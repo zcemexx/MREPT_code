@@ -9,7 +9,7 @@
 #$ -wd /myriadfs/home/zcemexx/Scratch  # 工作目录
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -e /myriadfs/home/zcemexx/Scratch/logs/
-#$ -m abe
+#$ -m abeq
 #$ -M zcemexx@ucl.ac.uk
 
 # 1. 加载环境
@@ -18,7 +18,7 @@ module load matlab
 
 # 2. 定义关键路径变量
 # CODE_DIR: 代码所在位置
-CODE_DIR="/myriadfs/home/zcemexx/projects/MREPT_code/code"
+CODE_DIR="/myriadfs/home/zcemexx/projects/MREPT_code/matlab/code"
 
 # SCRATCH_OUT: MATLAB 输出结果的根目录
 SCRATCH_OUT="/myriadfs/home/zcemexx/Scratch/nnUNet_raw"
