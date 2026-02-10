@@ -12,6 +12,16 @@ from nnunetv2.utilities.label_handling.label_handling import LabelManager
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
 
 import SimpleITK as sitk
+
+
+def _get_kernel_radius_range(dataset_json: dict) -> tuple[float, float]:
+    kmin = float(dataset_json.get('kernel_radius_min', dataset_json.get('regression_min', 1.0)))
+    kmax = float(dataset_json.get('kernel_radius_max', dataset_json.get('regression_max', 30.0)))
+    if kmax <= kmin:
+        raise ValueError('kernel radius max must be larger than min')
+    return kmin, kmax
+
+
 def convert_predicted_logits_to_segmentation_with_correct_shape(predicted_logits: Union[torch.Tensor, np.ndarray],
                                                                 plans_manager: PlansManager,
                                                                 configuration_manager: ConfigurationManager,
@@ -154,8 +164,11 @@ def export_prediction_from_logits(predicted_array_or_file: Union[np.ndarray, tor
         del ret
 
     # Explicit quantization for integer kernel radius export.
+    kmin, kmax = _get_kernel_radius_range(dataset_json_dict_or_file)
     segmentation_final = np.round(segmentation_final)
-    segmentation_final = np.clip(segmentation_final, 1, 30).astype(np.uint8)
+    segmentation_final = np.clip(segmentation_final, kmin, kmax)
+    out_dtype = np.uint8 if kmax <= 255 else np.uint16
+    segmentation_final = segmentation_final.astype(out_dtype)
 
     rw = plans_manager.image_reader_writer_class()
     rw.write_seg(segmentation_final, output_file_truncated + dataset_json_dict_or_file['file_ending'],

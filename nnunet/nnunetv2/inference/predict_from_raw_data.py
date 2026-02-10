@@ -158,6 +158,27 @@ class nnUNetPredictor(object):
         print(f'found the following folds: {use_folds}')
         return use_folds
 
+    def _is_regression_kernel_task(self) -> bool:
+        if self.dataset_json is not None and self.dataset_json.get('regression_task', False):
+            return True
+        if self.dataset_json is not None and ('kernel_radius_min' in self.dataset_json or 'kernel_radius_max' in self.dataset_json):
+            return True
+        if self.trainer_name is not None and 'MRCT' in self.trainer_name:
+            return True
+        return False
+
+    def _get_kernel_radius_range(self) -> Tuple[float, float]:
+        dct = self.dataset_json if isinstance(self.dataset_json, dict) else {}
+        kmin = float(dct.get('kernel_radius_min', dct.get('regression_min', 1.0)))
+        kmax = float(dct.get('kernel_radius_max', dct.get('regression_max', 30.0)))
+        if kmax <= kmin:
+            raise ValueError('kernel radius max must be larger than min')
+        return kmin, kmax
+
+    def _map_prediction_to_kernel_radius(self, prediction: torch.Tensor) -> torch.Tensor:
+        kmin, kmax = self._get_kernel_radius_range()
+        return torch.sigmoid(prediction) * (kmax - kmin) + kmin
+
     def _manage_input_and_output_lists(self, list_of_lists_or_source_folder: Union[str, List[List[str]]],
                                        output_folder_or_list_of_truncated_output_files: Union[None, str, List[str]],
                                        folder_with_segs_from_prev_stage: str = None,
@@ -498,6 +519,9 @@ class nnUNetPredictor(object):
 
             # prediction /= n_predictions
 
+            if self._is_regression_kernel_task():
+                prediction = self._map_prediction_to_kernel_radius(prediction)
+
 
             if self.verbose: print('Prediction done')
             prediction = prediction.to('cpu')
@@ -570,41 +594,79 @@ class nnUNetPredictor(object):
         return vol
 
     def rec_center(self, slicers, data, crop=8):
-        print("rec_mean with fixed-center crop | UNDER CONSTRUCTION")
         device = self.device
         with torch.no_grad():
             data = data.to(device, non_blocking=True)
-            ps = data.shape[1:]
+            spatial_shape = data.shape[1:]
+            n_spatial = len(spatial_shape)
             vol = torch.zeros_like(data, dtype=torch.half, device=device)
-            n_predictions = torch.zeros(ps, dtype=torch.half, device=device)
+            n_predictions = torch.zeros(spatial_shape, dtype=torch.half, device=device)
 
-            patch_size = self.configuration_manager.patch_size
-            cz = cy = cx = crop
+            patch_size = list(self.configuration_manager.patch_size)
+            if isinstance(crop, int):
+                requested_crop = [crop] * n_spatial
+            else:
+                requested_crop = list(crop)
+            requested_crop = requested_crop[:n_spatial]
 
-            # cz = int(patch_size[0] * center_ratio)
-            # cy = int(patch_size[1] * center_ratio)
-            # cx = int(patch_size[2] * center_ratio)
-            inner = (
-                slice(cz, patch_size[0] - cz),
-                slice(cy, patch_size[1] - cy),
-                slice(cx, patch_size[2] - cx),
-            )
+            # Keep center-crop conservative enough to avoid interior holes for large step sizes.
+            safe_crop = []
+            for axis in range(n_spatial):
+                starts = sorted({sl[axis + 1].start for sl in slicers})
+                if len(starts) > 1:
+                    min_step = min([b - a for a, b in zip(starts[:-1], starts[1:]) if (b - a) > 0])
+                else:
+                    min_step = patch_size[axis]
+                max_by_overlap = max((patch_size[axis] - min_step) // 2, 0)
+                max_by_size = max((patch_size[axis] - 1) // 2, 0)
+                safe_crop.append(min(requested_crop[axis], max_by_overlap, max_by_size))
 
             for sl in tqdm(slicers):
-                workon = data[sl].unsqueeze(0)
-                pred = self._internal_maybe_mirror_and_predict(workon)[0]
-                pred_center = pred[0][inner]
-                target_sl = (
-                    sl[0],
-                    slice(sl[1].start + cz, sl[1].stop - cz),
-                    slice(sl[2].start + cy, sl[2].stop - cy),
-                    slice(sl[3].start + cx, sl[3].stop - cx),
-                )
+                workon = data[sl][None]
+                pred = self._internal_maybe_mirror_and_predict(workon)[0][0]
 
-                vol[target_sl] += pred_center
-                n_predictions[target_sl[1:]] += 1
+                inner_slices = []
+                target_slices = []
+                for axis in range(n_spatial):
+                    sl_axis = sl[axis + 1]
+                    patch_len = pred.shape[axis]
+                    margin = safe_crop[axis]
 
-            vol /= n_predictions
+                    left = 0 if sl_axis.start == 0 else margin
+                    right = 0 if sl_axis.stop == data.shape[axis + 1] else margin
+                    if patch_len - right <= left:
+                        left, right = 0, 0
+
+                    inner_slices.append(slice(left, patch_len - right))
+                    target_slices.append(slice(sl_axis.start + left, sl_axis.stop - right))
+
+                pred_center = pred[tuple(inner_slices)]
+                target = tuple([sl[0]] + target_slices)
+                vol[target] += pred_center
+                n_predictions[tuple(target_slices)] += 1
+
+            # Fallback pass: fill any uncovered voxels with full-patch values to avoid divide-by-zero/NaN.
+            uncovered = n_predictions == 0
+            if torch.any(uncovered):
+                for sl in tqdm(slicers):
+                    workon = data[sl][None]
+                    pred = self._internal_maybe_mirror_and_predict(workon)[0][0]
+                    target_slices = tuple(sl[1:])
+                    missing = uncovered[target_slices]
+                    if torch.any(missing):
+                        vol_patch = vol[(sl[0],) + target_slices]
+                        vol_patch[missing] += pred[missing]
+                        vol[(sl[0],) + target_slices] = vol_patch
+
+                        counts_patch = n_predictions[target_slices]
+                        counts_patch[missing] += 1
+                        n_predictions[target_slices] = counts_patch
+
+                        uncovered_patch = uncovered[target_slices]
+                        uncovered_patch[missing] = False
+                        uncovered[target_slices] = uncovered_patch
+
+            vol /= torch.clamp(n_predictions, min=1)
             return vol
 
 

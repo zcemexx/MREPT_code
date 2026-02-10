@@ -12,6 +12,7 @@ from nnunetv2.training.dataloading.data_loader_3d import nnUNetDataLoader3D_MRCT
 
 from torch import distributed as dist
 from nnunetv2.utilities.collate_outputs import collate_outputs
+from nnunetv2.utilities.helpers import dummy_context
 
 from time import time, sleep
 from batchgenerators.utilities.file_and_folder_operations import join, load_json, isfile, save_json, maybe_mkdir_p
@@ -32,10 +33,18 @@ class nnUNetTrainerMRCT_mae(nnUNetTrainer):
         self.enable_deep_supervision = False
         self.num_iterations_per_epoch = 250
         self.num_epochs = 1000
+        self.kernel_radius_min = float(dataset_json.get('kernel_radius_min', dataset_json.get('regression_min', 1.0)))
+        self.kernel_radius_max = float(dataset_json.get('kernel_radius_max', dataset_json.get('regression_max', 30.0)))
+        if self.kernel_radius_max <= self.kernel_radius_min:
+            raise ValueError('kernel radius max must be larger than min')
+        self.kernel_radius_span = self.kernel_radius_max - self.kernel_radius_min
 
     def _build_loss(self):
         loss = myMAE()
         return loss
+
+    def _normalize_kernel_radius(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.clamp((x - self.kernel_radius_min) / self.kernel_radius_span, 0.0, 1.0)
 
     @staticmethod
     def get_training_transforms(patch_size: Union[np.ndarray, Tuple[int]],
@@ -78,14 +87,14 @@ class nnUNetTrainerMRCT_mae(nnUNetTrainer):
         # If the device_type is 'mps' then it will complain that mps is not implemented, even if enabled=False is set. Whyyyyyyy. (this is why we don't make use of enabled=False)
         # So autocast will only be active if we have a cuda device.
         with autocast(self.device.type, enabled=True) if self.device.type == 'cuda' else dummy_context():
-            output = self.network(data)
+            output = torch.sigmoid(self.network(data))
             # print(self.network)
             # assert(0)
 
             # del data
 
             
-            l = self.loss(output, target)
+            l = self.loss(output, self._normalize_kernel_radius(target))
 
         if self.grad_scaler is not None:
             self.grad_scaler.scale(l).backward()
@@ -144,10 +153,10 @@ class nnUNetTrainerMRCT_mae(nnUNetTrainer):
             target = target.to(self.device, non_blocking=True)
 
         with autocast(self.device.type, enabled=True) if self.device.type == 'cuda' else dummy_context():
-            output = self.network(data)
+            output = torch.sigmoid(self.network(data))
             del data
             mae_loss = myMAE()
-            l = mae_loss(output, target)
+            l = mae_loss(output, self._normalize_kernel_radius(target))
 
         return {'loss': l.detach().cpu().numpy(), 'tp_hard': 0, 'fp_hard': 0, 'fn_hard': 0}
 
