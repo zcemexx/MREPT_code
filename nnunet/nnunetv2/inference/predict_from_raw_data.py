@@ -983,6 +983,7 @@ def predict_entry_point():
                                  num_processes_segmentation_export=args.nps,
                                  folder_with_segs_from_prev_stage=args.prev_stage_predictions,
                                  num_parts=args.num_parts,
+                                 part_id=args.part_id,
                                  reconstruction_mode=args.rec)
     # r = predict_from_raw_data(args.i,
     #                           args.o,

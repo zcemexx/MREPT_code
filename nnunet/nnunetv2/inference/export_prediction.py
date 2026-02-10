@@ -144,13 +144,18 @@ def export_prediction_from_logits(predicted_array_or_file: Union[np.ndarray, tor
 
     # save
     if save_probabilities:
-        segmentation_final, probabilities_final = ret
+        probabilities_final = ret
         np.savez_compressed(output_file_truncated + '.npz', probabilities=probabilities_final)
         save_pickle(properties_dict, output_file_truncated + '.pkl')
+        segmentation_final = ret
         del probabilities_final, ret
     else:
         segmentation_final = ret
         del ret
+
+    # Explicit quantization for integer kernel radius export.
+    segmentation_final = np.round(segmentation_final)
+    segmentation_final = np.clip(segmentation_final, 1, 30).astype(np.uint8)
 
     rw = plans_manager.image_reader_writer_class()
     rw.write_seg(segmentation_final, output_file_truncated + dataset_json_dict_or_file['file_ending'],
