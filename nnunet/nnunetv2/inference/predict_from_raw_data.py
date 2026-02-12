@@ -3,6 +3,7 @@ import itertools
 import multiprocessing
 import os
 from copy import deepcopy
+from numbers import Integral
 from time import sleep
 from typing import Tuple, Union, List, Optional
 
@@ -593,80 +594,156 @@ class nnUNetPredictor(object):
         vol /= n_predictions
         return vol
 
-    def rec_center(self, slicers, data, crop=8):
-        device = self.device
+    def rec_center(self, slicers, data, crop='auto', results_device: Optional[torch.device] = None):
+        inference_device = self.device
+        results_device = inference_device if results_device is None else results_device
+
         with torch.no_grad():
-            data = data.to(device, non_blocking=True)
-            spatial_shape = data.shape[1:]
-            n_spatial = len(spatial_shape)
-            vol = torch.zeros_like(data, dtype=torch.half, device=device)
-            n_predictions = torch.zeros(spatial_shape, dtype=torch.half, device=device)
-
+            full_spatial_shape = tuple(data.shape[1:])
             patch_size = list(self.configuration_manager.patch_size)
-            if isinstance(crop, int):
-                requested_crop = [crop] * n_spatial
-            else:
-                requested_crop = list(crop)
-            requested_crop = requested_crop[:n_spatial]
+            patch_ndim = len(patch_size)
+            full_spatial_ndim = len(full_spatial_shape)
+            extra_spatial_ndim = full_spatial_ndim - patch_ndim
+            if extra_spatial_ndim not in (0, 1):
+                raise ValueError(
+                    f'Unsupported spatial dimensionality combination: data spatial dims={full_spatial_ndim}, '
+                    f'patch dims={patch_ndim}'
+                )
 
-            # Keep center-crop conservative enough to avoid interior holes for large step sizes.
-            safe_crop = []
-            for axis in range(n_spatial):
-                starts = sorted({sl[axis + 1].start for sl in slicers})
-                if len(starts) > 1:
-                    min_step = min([b - a for a, b in zip(starts[:-1], starts[1:]) if (b - a) > 0])
-                else:
-                    min_step = patch_size[axis]
-                max_by_overlap = max((patch_size[axis] - min_step) // 2, 0)
-                max_by_size = max((patch_size[axis] - 1) // 2, 0)
-                safe_crop.append(min(requested_crop[axis], max_by_overlap, max_by_size))
+            if crop is None or (isinstance(crop, str) and crop.lower() == 'auto'):
+                requested_crop = [max(int(round(ps * 0.125)), 1) for ps in patch_size]
+            elif isinstance(crop, Integral):
+                if crop < 0:
+                    raise ValueError(f'crop must be non-negative, got {crop}')
+                requested_crop = [int(crop)] * patch_ndim
+            elif isinstance(crop, (list, tuple)):
+                if len(crop) == 1:
+                    crop = list(crop) * patch_ndim
+                if len(crop) < patch_ndim:
+                    raise ValueError(
+                        f'crop must have at least {patch_ndim} entries for this configuration, got {len(crop)}'
+                    )
+                requested_crop = []
+                for c in list(crop)[:patch_ndim]:
+                    if not isinstance(c, Integral):
+                        raise TypeError(f'crop entries must be integers, got {type(c)}')
+                    if c < 0:
+                        raise ValueError(f'crop entries must be non-negative, got {c}')
+                    requested_crop.append(int(c))
+            elif isinstance(crop, str):
+                raise ValueError(f"Unsupported crop string '{crop}'. Use 'auto', None, int, or tuple/list of ints.")
+            else:
+                raise TypeError(f"crop must be 'auto', None, int, or tuple/list of ints, got {type(crop)}")
+
+            def _split_slicer(sl):
+                expected_len = 1 + extra_spatial_ndim + patch_ndim
+                if len(sl) != expected_len:
+                    raise ValueError(f'Unexpected slicer length {len(sl)}, expected {expected_len}: {sl}')
+                prefix_indices = tuple(sl[1:1 + extra_spatial_ndim])
+                patch_slices = tuple(sl[1 + extra_spatial_ndim:])
+                for s in patch_slices:
+                    if not isinstance(s, slice):
+                        raise TypeError(f'Patch slicer entries must be slice, got {type(s)} in {sl}')
+                return prefix_indices, patch_slices
+
+            # Precompute starts per axis so each patch can adapt crop using local left/right overlap.
+            axis_starts = []
+            axis_start_to_idx = []
+            for axis in range(patch_ndim):
+                slicer_axis = 1 + extra_spatial_ndim + axis
+                starts = sorted({sl[slicer_axis].start for sl in slicers})
+                if len(starts) == 0:
+                    starts = [0]
+                axis_starts.append(starts)
+                axis_start_to_idx.append({s: i for i, s in enumerate(starts)})
+
+            vol = None
+            n_predictions = torch.zeros(full_spatial_shape, dtype=torch.float32, device=results_device)
+
+            def _predict_patch(sl):
+                workon = data[sl][None]
+                if workon.device != inference_device:
+                    workon = workon.to(inference_device, non_blocking=False)
+                pred = self._internal_maybe_mirror_and_predict(workon)[0]
+                if pred.device != results_device:
+                    pred = pred.to(results_device, non_blocking=False)
+                return pred.float()
 
             for sl in tqdm(slicers):
-                workon = data[sl][None]
-                pred = self._internal_maybe_mirror_and_predict(workon)[0][0]
+                prefix_indices, patch_slices = _split_slicer(sl)
+                pred = _predict_patch(sl)
+                if vol is None:
+                    vol = torch.zeros((pred.shape[0], *full_spatial_shape), dtype=torch.float32, device=results_device)
 
                 inner_slices = []
-                target_slices = []
-                for axis in range(n_spatial):
-                    sl_axis = sl[axis + 1]
-                    patch_len = pred.shape[axis]
-                    margin = safe_crop[axis]
+                target_patch_slices = []
+                for axis in range(patch_ndim):
+                    sl_axis = patch_slices[axis]
+                    patch_len = pred.shape[axis + 1]
+                    data_axis = 1 + extra_spatial_ndim + axis
 
-                    left = 0 if sl_axis.start == 0 else margin
-                    right = 0 if sl_axis.stop == data.shape[axis + 1] else margin
+                    starts_here = axis_starts[axis]
+                    start_idx = axis_start_to_idx[axis][sl_axis.start]
+
+                    if start_idx > 0:
+                        left_gap = sl_axis.start - starts_here[start_idx - 1]
+                    else:
+                        left_gap = patch_size[axis]
+                    if start_idx + 1 < len(starts_here):
+                        right_gap = starts_here[start_idx + 1] - sl_axis.start
+                    else:
+                        right_gap = patch_size[axis]
+
+                    max_left_by_overlap = max((patch_size[axis] - left_gap) // 2, 0)
+                    max_right_by_overlap = max((patch_size[axis] - right_gap) // 2, 0)
+                    max_by_size = max((patch_len - 1) // 2, 0)
+
+                    left = 0 if sl_axis.start == 0 else min(requested_crop[axis], max_left_by_overlap, max_by_size)
+                    right = 0 if sl_axis.stop == data.shape[data_axis] else min(requested_crop[axis], max_right_by_overlap, max_by_size)
                     if patch_len - right <= left:
                         left, right = 0, 0
 
                     inner_slices.append(slice(left, patch_len - right))
-                    target_slices.append(slice(sl_axis.start + left, sl_axis.stop - right))
+                    target_patch_slices.append(slice(sl_axis.start + left, sl_axis.stop - right))
 
-                pred_center = pred[tuple(inner_slices)]
-                target = tuple([sl[0]] + target_slices)
-                vol[target] += pred_center
-                n_predictions[tuple(target_slices)] += 1
+                pred_center = pred[(slice(None),) + tuple(inner_slices)]
+                counts_target = prefix_indices + tuple(target_patch_slices)
+                vol_target = (slice(None),) + counts_target
+                vol[vol_target] += pred_center
+                n_predictions[counts_target] += 1
 
-            # Fallback pass: fill any uncovered voxels with full-patch values to avoid divide-by-zero/NaN.
+            if vol is None:
+                # Should not happen in regular sliding window inference, but keep behavior explicit.
+                return torch.zeros((1, *full_spatial_shape), dtype=torch.float32, device=results_device)
+
+            # Fallback pass: fill uncovered voxels with full-patch values to avoid divide-by-zero/NaN.
             uncovered = n_predictions == 0
             if torch.any(uncovered):
                 for sl in tqdm(slicers):
-                    workon = data[sl][None]
-                    pred = self._internal_maybe_mirror_and_predict(workon)[0][0]
-                    target_slices = tuple(sl[1:])
-                    missing = uncovered[target_slices]
+                    prefix_indices, patch_slices = _split_slicer(sl)
+                    full_counts_target = prefix_indices + patch_slices
+                    if not torch.any(uncovered[full_counts_target]):
+                        continue
+
+                    pred = _predict_patch(sl)
+                    missing = uncovered[full_counts_target]
                     if torch.any(missing):
-                        vol_patch = vol[(sl[0],) + target_slices]
-                        vol_patch[missing] += pred[missing]
-                        vol[(sl[0],) + target_slices] = vol_patch
+                        vol_patch = vol[(slice(None),) + full_counts_target]
+                        vol_patch[:, missing] += pred[:, missing]
+                        vol[(slice(None),) + full_counts_target] = vol_patch
 
-                        counts_patch = n_predictions[target_slices]
+                        counts_patch = n_predictions[full_counts_target]
                         counts_patch[missing] += 1
-                        n_predictions[target_slices] = counts_patch
+                        n_predictions[full_counts_target] = counts_patch
 
-                        uncovered_patch = uncovered[target_slices]
+                        uncovered_patch = uncovered[full_counts_target]
                         uncovered_patch[missing] = False
-                        uncovered[target_slices] = uncovered_patch
+                        uncovered[full_counts_target] = uncovered_patch
 
-            vol /= torch.clamp(n_predictions, min=1)
+                    if not torch.any(uncovered):
+                        break
+
+            vol /= torch.clamp(n_predictions, min=1).unsqueeze(0)
             return vol
 
 
@@ -751,7 +828,7 @@ class nnUNetPredictor(object):
                 predicted_logits = self.rec_mean(slicers, data)
             elif reconstruction_mode == "center_mean":
                 print("Reconstruction: CENTER MEAN")
-                predicted_logits = self.rec_center(slicers, data)
+                predicted_logits = self.rec_center(slicers, data, results_device=results_device)
             elif reconstruction_mode == "median":
                 print("Reconstruction: MEDIAN")
                 predicted_logits = self.rec_median(slicers, data)
