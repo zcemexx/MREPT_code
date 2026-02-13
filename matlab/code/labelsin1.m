@@ -4,6 +4,7 @@
 
 clear; clc;
 % close all; % 集群模式下保持注释
+warning('off', 'backtrace'); % 精简警告输出，避免长调用栈刷屏
 
 % --- 1. 路径配置 ---
 addpath('/myriadfs/home/zcemexx/projects/MREPT_code/matlab/functions');
@@ -98,6 +99,7 @@ doSubVolume   = false;
 subVolSize    = 32;
 do_filter     = true;
 estimatenoise = true;
+quietMappingLog = true; % true: 抑制 conductivityMapping 在 parfor 中的重复输出
 snr_range_linear = [10, 150];
 snr_range_log    = log10(snr_range_linear);
 radius_list      = 1:30;
@@ -137,7 +139,13 @@ end
 mask = (tissueMask > 0);
 
 % --- 5.2 加噪 ---
-rng(task_id); % 固定随机种子
+case_num = sscanf(caseName, 'M%d');
+if isempty(case_num)
+    warning('无法从 caseName=%s 解析 case number，回退使用 task_id=%d 作为随机种子。', caseName, task_id);
+    case_num = task_id;
+end
+rng(case_num); % 固定随机种子（按 case number）
+fprintf('随机种子 (case number): %d\n', case_num);
 this_snr_log = snr_range_log(1) + (snr_range_log(2)-snr_range_log(1)) * rand();
 this_snr     = 10^this_snr_log;
 
@@ -163,8 +171,20 @@ parfor ir = 1:nR
     params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
 
     % 注意：确保你的 conductivityMapping 函数能处理 inf/nan
-    [cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ...
-        'magnitude', magnitude_noisy, 'segmentation', tissueMask, 'estimatenoise', estimatenoise);
+    if quietMappingLog
+        warnState = warning;
+        warning('off', 'all');
+        try
+            evalc('[cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ''magnitude'', magnitude_noisy, ''segmentation'', tissueMask, ''estimatenoise'', estimatenoise);');
+        catch ME
+            warning(warnState);
+            rethrow(ME);
+        end
+        warning(warnState);
+    else
+        [cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ...
+            'magnitude', magnitude_noisy, 'segmentation', tissueMask, 'estimatenoise', estimatenoise);
+    end
 
     if do_filter; cond_r(cond_r < 0 | cond_r > 10) = NaN; end
 
