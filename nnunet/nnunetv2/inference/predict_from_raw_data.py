@@ -67,6 +67,10 @@ class nnUNetPredictor(object):
             perform_everything_on_device = False
         self.device = device
         self.perform_everything_on_device = perform_everything_on_device
+        self.default_center_crop_ratio = 0.125
+        self.center_crop_ratio = self.default_center_crop_ratio
+        self.center_crop_ratio_source = 'code_default'
+        self.inference_config = {}
 
     def initialize_from_trained_model_folder(self, model_training_output_dir: str,
                                              use_folds: Union[Tuple[Union[int, str]], None],
@@ -119,6 +123,7 @@ class nnUNetPredictor(object):
         self.trainer_name = trainer_name
         self.allowed_mirroring_axes = inference_allowed_mirroring_axes
         self.label_manager = plans_manager.get_label_manager(dataset_json)
+        self._load_inference_config(model_training_output_dir, use_folds)
         if ('nnUNet_compile' in os.environ.keys()) and (os.environ['nnUNet_compile'].lower() in ('true', '1', 't')) \
                 and not isinstance(self.network, OptimizedModule):
             print('Using torch.compile')
@@ -139,6 +144,9 @@ class nnUNetPredictor(object):
         self.trainer_name = trainer_name
         self.allowed_mirroring_axes = inference_allowed_mirroring_axes
         self.label_manager = plans_manager.get_label_manager(dataset_json)
+        self.inference_config = {}
+        self.center_crop_ratio = self.default_center_crop_ratio
+        self.center_crop_ratio_source = 'code_default'
         allow_compile = True
         allow_compile = allow_compile and ('nnUNet_compile' in os.environ.keys()) and (
                     os.environ['nnUNet_compile'].lower() in ('true', '1', 't'))
@@ -158,6 +166,96 @@ class nnUNetPredictor(object):
         use_folds = [int(i.split('_')[-1]) for i in fold_folders]
         print(f'found the following folds: {use_folds}')
         return use_folds
+
+    def set_center_crop_ratio(self, crop_ratio: float, source: str = 'manual'):
+        crop_ratio = float(crop_ratio)
+        if crop_ratio < 0:
+            raise ValueError(f'center_crop_ratio must be non-negative, got {crop_ratio}')
+        self.center_crop_ratio = crop_ratio
+        self.center_crop_ratio_source = source
+        if self.verbose:
+            print(f'center_crop_ratio set to {self.center_crop_ratio:.6f} (source={self.center_crop_ratio_source})')
+
+    def _extract_integer_folds(self, use_folds: Union[Tuple[Union[int, str]], List[Union[int, str]], None]) -> List[int]:
+        if use_folds is None:
+            return []
+        folds = []
+        for f in use_folds:
+            if isinstance(f, Integral):
+                folds.append(int(f))
+                continue
+            if isinstance(f, str):
+                if f == 'all':
+                    continue
+                try:
+                    folds.append(int(f))
+                except ValueError:
+                    continue
+        return folds
+
+    @staticmethod
+    def _safe_read_json(path: str):
+        if not isfile(path):
+            return None
+        try:
+            return load_json(path)
+        except Exception as e:
+            print(f'Warning: failed to load {path}: {e}')
+            return None
+
+    def _resolve_center_crop_ratio_from_config(self, cfg: dict,
+                                               selected_folds: Union[Tuple[Union[int, str]], List[Union[int, str]], None]) -> Optional[float]:
+        if not isinstance(cfg, dict):
+            return None
+
+        fold_ratios = []
+        fold_map = cfg.get('center_crop_ratio_per_fold', None)
+        if isinstance(fold_map, dict):
+            for f in self._extract_integer_folds(selected_folds):
+                ratio_value = fold_map.get(str(f), fold_map.get(f, None))
+                if isinstance(ratio_value, (int, float)):
+                    ratio = float(ratio_value)
+                    if ratio >= 0:
+                        fold_ratios.append(ratio)
+        if len(fold_ratios) > 0:
+            return float(np.mean(fold_ratios))
+
+        for key in ('center_crop_ratio', 'default_center_crop_ratio'):
+            ratio_value = cfg.get(key, None)
+            if isinstance(ratio_value, (int, float)):
+                ratio = float(ratio_value)
+                if ratio >= 0:
+                    return ratio
+        return None
+
+    def _load_inference_config(self, model_training_output_dir: str,
+                               selected_folds: Union[Tuple[Union[int, str]], List[Union[int, str]], None]):
+        self.inference_config = {}
+        selected_ratio = None
+
+        cfg_path = join(model_training_output_dir, 'inference_config.json')
+        cfg = self._safe_read_json(cfg_path)
+        if isinstance(cfg, dict):
+            self.inference_config = cfg
+            selected_ratio = self._resolve_center_crop_ratio_from_config(cfg, selected_folds)
+
+        if selected_ratio is None:
+            fold_ratios = []
+            for fold_id in self._extract_integer_folds(selected_folds):
+                fold_cfg_path = join(model_training_output_dir, f'fold_{fold_id}', 'inference_config.json')
+                fold_cfg = self._safe_read_json(fold_cfg_path)
+                if not isinstance(fold_cfg, dict):
+                    continue
+                ratio_value = fold_cfg.get('center_crop_ratio', fold_cfg.get('default_center_crop_ratio', None))
+                if isinstance(ratio_value, (int, float)):
+                    ratio = float(ratio_value)
+                    if ratio >= 0:
+                        fold_ratios.append(ratio)
+            if len(fold_ratios) > 0:
+                selected_ratio = float(np.mean(fold_ratios))
+
+        if selected_ratio is not None:
+            self.set_center_crop_ratio(selected_ratio, source='inference_config')
 
     def _is_regression_kernel_task(self) -> bool:
         if self.dataset_json is not None and self.dataset_json.get('regression_task', False):
@@ -611,7 +709,13 @@ class nnUNetPredictor(object):
                 )
 
             if crop is None or (isinstance(crop, str) and crop.lower() == 'auto'):
-                requested_crop = [max(int(round(ps * 0.125)), 1) for ps in patch_size]
+                auto_crop_ratio = float(self.center_crop_ratio)
+                if auto_crop_ratio < 0:
+                    raise ValueError(f'center_crop_ratio must be non-negative, got {auto_crop_ratio}')
+                if auto_crop_ratio == 0:
+                    requested_crop = [0] * patch_ndim
+                else:
+                    requested_crop = [max(int(round(ps * auto_crop_ratio)), 1) for ps in patch_size]
             elif isinstance(crop, Integral):
                 if crop < 0:
                     raise ValueError(f'crop must be non-negative, got {crop}')
@@ -949,6 +1053,9 @@ def predict_entry_point_modelfolder():
                              'jobs)')
     parser.add_argument('--rec', type=str, default='mean', choices=['mean', 'center_mean', 'median',],
                         help='Method of reconstruction: mean or median. Default is mean.')
+    parser.add_argument('--center_crop_ratio', type=float, required=False, default=None,
+                        help='Override center_mean auto crop ratio. If omitted, predictor loads it from '
+                             'inference_config.json (if available).')
 
 
     print(
@@ -988,6 +1095,8 @@ def predict_entry_point_modelfolder():
                                 allow_tqdm=not args.disable_progress_bar,
                                 verbose_preprocessing=args.verbose)
     predictor.initialize_from_trained_model_folder(args.m, args.f, args.chk)
+    if args.center_crop_ratio is not None:
+        predictor.set_center_crop_ratio(args.center_crop_ratio, source='cli')
     predictor.predict_from_files(args.i, args.o, save_probabilities=args.save_probabilities,
                                  overwrite=not args.continue_prediction,
                                  num_processes_preprocessing=args.npp,
@@ -1061,6 +1170,9 @@ def predict_entry_point():
                              'jobs)')
     parser.add_argument('--rec', type=str, default='mean', choices=['mean', 'center_mean', 'median',],
                         help='Method of reconstruction: mean or median. Default is mean.')
+    parser.add_argument('--center_crop_ratio', type=float, required=False, default=None,
+                        help='Override center_mean auto crop ratio. If omitted, predictor loads it from '
+                             'inference_config.json (if available).')
 
 
     print(
@@ -1109,6 +1221,8 @@ def predict_entry_point():
         args.f,
         checkpoint_name=args.chk
     )
+    if args.center_crop_ratio is not None:
+        predictor.set_center_crop_ratio(args.center_crop_ratio, source='cli')
     # predictor.predict_from_files(args.i, args.o, save_probabilities=args.save_probabilities,
     #                              overwrite=not args.continue_prediction,
     #                              num_processes_preprocessing=args.npp,
@@ -1145,38 +1259,8 @@ def predict_entry_point():
 
 
 if __name__ == '__main__':
-    # predict a bunch of files
-    from nnunetv2.paths import nnUNet_results, nnUNet_raw
-
-    predictor = nnUNetPredictor(
-        tile_step_size=0.5,
-        use_gaussian=True,
-        use_mirroring=True,
-        perform_everything_on_device=True,
-        device=torch.device('cuda', 0),
-        verbose=False,
-        verbose_preprocessing=False,
-        allow_tqdm=True
-    )
-    predictor.initialize_from_trained_model_folder(
-        join(nnUNet_results, 'Dataset003_Liver/nnUNetTrainer__nnUNetPlans__3d_lowres'),
-        use_folds=(0,),
-        checkpoint_name='checkpoint_final.pth',
-    )
-    predictor.predict_from_files(join(nnUNet_raw, 'Dataset003_Liver/imagesTs'),
-                                 join(nnUNet_raw, 'Dataset003_Liver/imagesTs_predlowres'),
-                                 save_probabilities=False, overwrite=False,
-                                 num_processes_preprocessing=2, num_processes_segmentation_export=2,
-                                 folder_with_segs_from_prev_stage=None, num_parts=1, part_id=0)
-
-    # predict a numpy array
-    from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
-
-    img, props = SimpleITKIO().read_images([join(nnUNet_raw, 'Dataset003_Liver/imagesTr/liver_63_0000.nii.gz')])
-    ret = predictor.predict_single_npy_array(img, props, None, None, False)
-
-    iterator = predictor.get_data_iterator_from_raw_npy_data([img], None, [props], None, 1)
-    ret = predictor.predict_from_data_iterator(iterator, False, 1)
+        # predict a bunch of files
+    # from nnunetv2.paths import nnUNet_results, nnUNet_raw
 
     # predictor = nnUNetPredictor(
     #     tile_step_size=0.5,
@@ -1185,16 +1269,26 @@ if __name__ == '__main__':
     #     perform_everything_on_device=True,
     #     device=torch.device('cuda', 0),
     #     verbose=False,
+    #     verbose_preprocessing=False,
     #     allow_tqdm=True
-    #     )
+    # )
     # predictor.initialize_from_trained_model_folder(
-    #     join(nnUNet_results, 'Dataset003_Liver/nnUNetTrainer__nnUNetPlans__3d_cascade_fullres'),
+    #     join(nnUNet_results, 'Dataset003_Liver/nnUNetTrainer__nnUNetPlans__3d_lowres'),
     #     use_folds=(0,),
     #     checkpoint_name='checkpoint_final.pth',
     # )
     # predictor.predict_from_files(join(nnUNet_raw, 'Dataset003_Liver/imagesTs'),
-    #                              join(nnUNet_raw, 'Dataset003_Liver/imagesTs_predCascade'),
+    #                              join(nnUNet_raw, 'Dataset003_Liver/imagesTs_predlowres'),
     #                              save_probabilities=False, overwrite=False,
     #                              num_processes_preprocessing=2, num_processes_segmentation_export=2,
-    #                              folder_with_segs_from_prev_stage='/media/isensee/data/nnUNet_raw/Dataset003_Liver/imagesTs_predlowres',
-    #                              num_parts=1, part_id=0)
+    #                              folder_with_segs_from_prev_stage=None, num_parts=1, part_id=0)
+
+    # # predict a numpy array
+    # from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
+
+    # img, props = SimpleITKIO().read_images([join(nnUNet_raw, 'Dataset003_Liver/imagesTr/liver_63_0000.nii.gz')])
+    # ret = predictor.predict_single_npy_array(img, props, None, None, False)
+
+    # iterator = predictor.get_data_iterator_from_raw_npy_data([img], None, [props], None, 1)
+    # ret = predictor.predict_from_data_iterator(iterator, False, 1)
+    predict_entry_point()
