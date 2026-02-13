@@ -38,7 +38,8 @@ function generate_dataset_json(outputFolder, numTraining, description)
     % --- 4. 元数据 ---
     jsonStruct.numTraining = numTraining;
     jsonStruct.file_ending = '.nii.gz';
-    jsonStruct.overwrite_image_reader_writer = 'NibabelIOOrig'; % 推荐
+    % Match current nnunetv2/imageio implementation in this repo.
+    jsonStruct.overwrite_image_reader_writer = 'NibabelIO';
     jsonStruct.name = 'Dataset001_EPT';
     jsonStruct.reference = 'UCL EPT Project';
     jsonStruct.release = '1.0';

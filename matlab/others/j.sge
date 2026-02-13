@@ -1,19 +1,42 @@
-#!/bin/bash -l
-#$ -N Label_EPT_Job
-#$ -l h_rt=23:59:58
-#$ -l mem=8G
-#$ -pe smp 8
-#$ -cwd
-#$ -j y
-#$ -m abe
-#$ -M zcemexx@ucl.ac.uk
+# ===== 0) 基础变量 =====
+PROJECT=/myriadfs/home/zcemexx/projects/MREPT_code
+RAW=/myriadfs/home/zcemexx/Scratch/nnUNet_raw/Dataset001_EPT
+METRICS=/myriadfs/home/zcemexx/Scratch/nnUNet_raw/metrics
+NOISY=/myriadfs/home/zcemexx/Scratch/data/ADEPT_noisy
+BAD_CASES=(6 8 12 19 22 24 39 40 41 42 43 50 66 70 75 79 84)
 
-# 1. 环境加载 (改为通用加载，避开版本名错误)
-module load matlab
+cd "$PROJECT" || exit 1
 
-# 2. 切换路径
-cd /myriadfs/home/zcemexx/projects/MREPT_code/code
+# ===== 1) 删除坏的 NIfTI 输出（imagesTr + labelsTr）=====
+for i in "${BAD_CASES[@]}"; do
+  rm -f "$RAW/imagesTr/M${i}_0000.nii.gz" \
+        "$RAW/imagesTr/M${i}_0001.nii.gz" \
+        "$RAW/labelsTr/M${i}.nii.gz"
+done
 
-# 3. 运行指令
-matlab -nodisplay -nosplash -nodesktop -r "labelv1_4; exit" -logfile
-"matlab_runtime.log"
+# ===== 2) 删除对应 case 的指标/图/缓存（可选但建议）=====
+for i in "${BAD_CASES[@]}"; do
+  rm -f "$METRICS/metric_M${i}.mat" \
+        "$METRICS/plot_cache/plotcache_M${i}.mat" \
+        "$NOISY/N${i}.mat"
+  rm -f "$METRICS/figures/M${i}"_*.png
+done
+
+# ===== 3) 生成“安全重跑脚本”（去掉 sub_array.sh 尾部递归 qsub 循环）=====
+awk '
+  BEGIN{skip=0}
+  /^for i in .*; do$/ {skip=1; next}
+  skip==1 && /^done$/ {skip=0; next}
+  skip==0 {print}
+' sub_array.sh > sub_array_rerun17.sh
+
+chmod +x sub_array_rerun17.sh
+
+# 可选检查：确认脚本末尾不再有 qsub 循环
+tail -n 20 sub_array_rerun17.sh
+
+# ===== 4) 仅提交 17 个任务 =====
+qsub -t 6,8,12,19,22,24,39,40,41,42,43,50,66,70,75,79,84 sub_array_rerun17.sh
+
+# ===== 5) 监控 =====
+qstat -u "$USER"
