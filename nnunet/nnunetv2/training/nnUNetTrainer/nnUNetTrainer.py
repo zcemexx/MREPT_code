@@ -7,7 +7,7 @@ import warnings
 from copy import deepcopy
 from datetime import datetime
 from time import time, sleep
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Optional
 
 import numpy as np
 import torch
@@ -25,7 +25,7 @@ from batchgenerators.utilities.file_and_folder_operations import join, load_json
 from torch._dynamo import OptimizedModule
 
 from nnunetv2.configuration import ANISO_THRESHOLD, default_num_processes
-from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder
+from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder, region_or_label_to_mask
 from nnunetv2.inference.export_prediction import export_prediction_from_logits, resample_and_save
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from nnunetv2.inference.sliding_window_prediction import compute_gaussian
@@ -180,6 +180,9 @@ class nnUNetTrainer(object):
         ### inference things
         self.inference_allowed_mirroring_axes = None  # this variable is set in
         # self.configure_rotation_dummyDA_mirroring_and_inital_patch_size and will be saved in checkpoints
+        self.center_crop_ratio_candidates = (0.0625, 0.09375, 0.125, 0.15625, 0.1875)
+        self.center_crop_ratio_subset_size = 20
+        self.center_crop_ratio_reconstruction_mode = 'center_mean'
 
         ### checkpoint saving stuff
         self.save_every = 50
@@ -1134,6 +1137,174 @@ class nnUNetTrainer(object):
             if checkpoint['grad_scaler_state'] is not None:
                 self.grad_scaler.load_state_dict(checkpoint['grad_scaler_state'])
 
+    def _is_regression_kernel_task_for_inference(self) -> bool:
+        if isinstance(self.dataset_json, dict) and self.dataset_json.get('regression_task', False):
+            return True
+        if isinstance(self.dataset_json, dict) and (
+            ('kernel_radius_min' in self.dataset_json) or ('kernel_radius_max' in self.dataset_json)
+        ):
+            return True
+        return 'MRCT' in self.__class__.__name__
+
+    def _compute_center_crop_search_score(self, prediction: torch.Tensor, seg: np.ndarray,
+                                          is_regression_task: bool) -> float:
+        if isinstance(prediction, torch.Tensor):
+            prediction = prediction.detach()
+
+        if seg.ndim == prediction.ndim:
+            seg_ref = seg[0]
+        else:
+            seg_ref = seg
+
+        if is_regression_task:
+            pred_map = prediction[0].float().cpu().numpy()
+            seg_ref = np.asarray(seg_ref, dtype=np.float32)
+            valid_mask = np.ones_like(seg_ref, dtype=bool)
+            if self.label_manager.ignore_label is not None:
+                valid_mask &= (seg_ref != self.label_manager.ignore_label)
+            if not np.any(valid_mask):
+                return 0.0
+            mae = np.mean(np.abs(pred_map[valid_mask] - seg_ref[valid_mask]))
+            return -float(mae)
+
+        probs = self.label_manager.apply_inference_nonlin(prediction)
+        pred_seg = self.label_manager.convert_probabilities_to_segmentation(probs)
+        if isinstance(pred_seg, torch.Tensor):
+            pred_seg = pred_seg.detach().cpu().numpy()
+        seg_ref = np.asarray(seg_ref)
+
+        ignore_mask = seg_ref == self.label_manager.ignore_label if self.label_manager.ignore_label is not None else None
+        regions_or_labels = self.label_manager.foreground_regions if self.label_manager.has_regions else \
+            self.label_manager.foreground_labels
+
+        dice_scores = []
+        for r in regions_or_labels:
+            mask_ref = region_or_label_to_mask(seg_ref, r)
+            mask_pred = region_or_label_to_mask(pred_seg, r)
+            if ignore_mask is None:
+                tp = np.sum(mask_ref & mask_pred)
+                fp = np.sum((~mask_ref) & mask_pred)
+                fn = np.sum(mask_ref & (~mask_pred))
+            else:
+                use_mask = ~ignore_mask
+                tp = np.sum((mask_ref & mask_pred) & use_mask)
+                fp = np.sum(((~mask_ref) & mask_pred) & use_mask)
+                fn = np.sum((mask_ref & (~mask_pred)) & use_mask)
+            denom = 2 * tp + fp + fn
+            dice_scores.append(np.nan if denom == 0 else (2 * tp / denom))
+
+        if len(dice_scores) == 0:
+            return 0.0
+        if np.all(np.isnan(dice_scores)):
+            return 1.0
+        return float(np.nanmean(dice_scores))
+
+    def _search_best_center_crop_ratio(self, predictor: nnUNetPredictor, val_keys: List[str]) -> Tuple[float, dict]:
+        if len(val_keys) == 0:
+            return float(predictor.center_crop_ratio), {
+                'metric_name': 'Dice',
+                'candidate_scores': {},
+                'num_subset_cases': 0
+            }
+
+        is_regression_task = self._is_regression_kernel_task_for_inference()
+        metric_name = 'neg_MAE' if is_regression_task else 'Dice'
+        subset_size = min(int(self.center_crop_ratio_subset_size), len(val_keys))
+        subset_keys = sorted(val_keys)[:subset_size]
+
+        dataset_val_subset = nnUNetDataset(self.preprocessed_dataset_folder, subset_keys,
+                                           folder_with_segs_from_previous_stage=self.folder_with_segs_from_previous_stage,
+                                           num_images_properties_loading_threshold=0)
+
+        candidate_scores = {}
+        for ratio in self.center_crop_ratio_candidates:
+            predictor.set_center_crop_ratio(float(ratio), source='validation_auto_search')
+            case_scores = []
+            for k in subset_keys:
+                data, seg, _ = dataset_val_subset.load_case(k)
+                if self.is_cascaded:
+                    data = np.vstack((data, convert_labelmap_to_one_hot(seg[-1], self.label_manager.foreground_labels,
+                                                                        output_dtype=data.dtype)))
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    data_tensor = torch.from_numpy(data)
+
+                prediction = predictor.predict_sliding_window_return_logits(
+                    data_tensor,
+                    reconstruction_mode=self.center_crop_ratio_reconstruction_mode
+                )
+                score = self._compute_center_crop_search_score(prediction, seg, is_regression_task)
+                case_scores.append(score)
+
+            candidate_score = float(np.mean(case_scores)) if len(case_scores) > 0 else float('-inf')
+            candidate_scores[str(float(ratio))] = candidate_score
+            self.print_to_log_file(
+                f'center-crop search ratio={float(ratio):.6f}, metric({metric_name})={candidate_score:.6f}',
+                also_print_to_console=True
+            )
+
+        best_ratio = max(self.center_crop_ratio_candidates, key=lambda x: candidate_scores[str(float(x))])
+        report = {
+            'metric_name': metric_name,
+            'candidate_scores': candidate_scores,
+            'num_subset_cases': len(subset_keys),
+            'subset_keys': subset_keys
+        }
+        return float(best_ratio), report
+
+    def _save_inference_config(self, selected_ratio: float, report: Optional[dict] = None):
+        if self.output_folder is None or self.output_folder_base is None:
+            return
+
+        report = {} if report is None else report
+        timestamp = datetime.now().isoformat(timespec='seconds')
+        fold_cfg = {
+            'reconstruction_mode': self.center_crop_ratio_reconstruction_mode,
+            'center_crop_ratio': float(selected_ratio),
+            'selection_metric': report.get('metric_name', 'Dice'),
+            'selected_from_cases': int(report.get('num_subset_cases', 0)),
+            'candidate_ratios': [float(i) for i in self.center_crop_ratio_candidates],
+            'candidate_scores': report.get('candidate_scores', {}),
+            'updated_at': timestamp,
+            'updated_by_fold': int(self.fold),
+        }
+        save_json(fold_cfg, join(self.output_folder, 'inference_config.json'), sort_keys=False)
+
+        root_cfg_path = join(self.output_folder_base, 'inference_config.json')
+        root_cfg = {}
+        if isfile(root_cfg_path):
+            try:
+                root_cfg = load_json(root_cfg_path)
+            except Exception:
+                root_cfg = {}
+        if not isinstance(root_cfg, dict):
+            root_cfg = {}
+
+        per_fold = root_cfg.get('center_crop_ratio_per_fold', {})
+        if not isinstance(per_fold, dict):
+            per_fold = {}
+        per_fold[str(self.fold)] = float(selected_ratio)
+
+        valid_fold_ratios = []
+        for v in per_fold.values():
+            if isinstance(v, (int, float)):
+                valid_fold_ratios.append(float(v))
+        default_ratio = float(np.mean(valid_fold_ratios)) if len(valid_fold_ratios) > 0 else float(selected_ratio)
+
+        root_cfg.update({
+            'reconstruction_mode': self.center_crop_ratio_reconstruction_mode,
+            'center_crop_ratio': default_ratio,
+            'default_center_crop_ratio': default_ratio,
+            'center_crop_ratio_per_fold': per_fold,
+            'selection_metric': report.get('metric_name', 'Dice'),
+            'selected_from_cases': int(report.get('num_subset_cases', 0)),
+            'candidate_ratios': [float(i) for i in self.center_crop_ratio_candidates],
+            'candidate_scores': report.get('candidate_scores', {}),
+            'updated_at': timestamp,
+            'updated_by_fold': int(self.fold),
+        })
+        save_json(root_cfg, root_cfg_path, sort_keys=False)
+
     def perform_actual_validation(self, save_probabilities: bool = False):
         self.set_deep_supervision_enabled(False)
         self.network.eval()
@@ -1155,6 +1326,48 @@ class nnUNetTrainer(object):
                                         self.dataset_json, self.__class__.__name__,
                                         self.inference_allowed_mirroring_axes)
 
+        _, all_val_keys = self.do_split()
+        validation_reconstruction_mode = 'mean'
+        selected_center_crop_ratio = float(predictor.center_crop_ratio)
+        if len(self.center_crop_ratio_candidates) > 0:
+            # In multi-node DDP, local rank 0 exists on every node. Gate writes on global rank 0 instead.
+            if (not self.is_ddp) or dist.get_rank() == 0:
+                search_predictor = predictor
+                if self.is_ddp and isinstance(self.network, DDP):
+                    search_predictor = nnUNetPredictor(tile_step_size=0.5, use_gaussian=True, use_mirroring=True,
+                                                      perform_everything_on_device=True, device=self.device, verbose=False,
+                                                      verbose_preprocessing=False, allow_tqdm=False)
+                    search_predictor.manual_initialization(self.network.module, self.plans_manager,
+                                                           self.configuration_manager, None, self.dataset_json,
+                                                           self.__class__.__name__, self.inference_allowed_mirroring_axes)
+                try:
+                    selected_center_crop_ratio, search_report = self._search_best_center_crop_ratio(search_predictor, all_val_keys)
+                except Exception as e:
+                    self.print_to_log_file(
+                        f'Center-crop auto search failed ({e}). Falling back to {selected_center_crop_ratio:.6f}',
+                        also_print_to_console=True
+                    )
+                    search_report = {
+                        'metric_name': 'Dice',
+                        'candidate_scores': {},
+                        'num_subset_cases': 0
+                    }
+                predictor.set_center_crop_ratio(selected_center_crop_ratio, source='validation_auto_search')
+                self._save_inference_config(selected_center_crop_ratio, search_report)
+                self.print_to_log_file(
+                    f'Selected center_crop_ratio={selected_center_crop_ratio:.6f} for validation/inference defaults',
+                    also_print_to_console=True
+                )
+
+            if self.is_ddp:
+                ratio_tensor = torch.tensor([selected_center_crop_ratio], dtype=torch.float32, device=self.device)
+                dist.broadcast(ratio_tensor, src=0)
+                selected_center_crop_ratio = float(ratio_tensor.item())
+                predictor.set_center_crop_ratio(selected_center_crop_ratio, source='validation_auto_search_ddp')
+                dist.barrier()
+
+            validation_reconstruction_mode = self.center_crop_ratio_reconstruction_mode
+
         with multiprocessing.get_context("spawn").Pool(default_num_processes) as segmentation_export_pool:
             worker_list = [i for i in segmentation_export_pool._pool]
             validation_output_folder = join(self.output_folder, 'validation')
@@ -1162,7 +1375,7 @@ class nnUNetTrainer(object):
 
             # we cannot use self.get_tr_and_val_datasets() here because we might be DDP and then we have to distribute
             # the validation keys across the workers.
-            _, val_keys = self.do_split()
+            val_keys = all_val_keys
             if self.is_ddp:
                 last_barrier_at_idx = len(val_keys) // dist.get_world_size() - 1
 
@@ -1203,7 +1416,10 @@ class nnUNetTrainer(object):
                 self.print_to_log_file(f'{k}, shape {data.shape}, rank {self.local_rank}')
                 output_filename_truncated = join(validation_output_folder, k)
 
-                prediction = predictor.predict_sliding_window_return_logits(data)
+                prediction = predictor.predict_sliding_window_return_logits(
+                    data,
+                    reconstruction_mode=validation_reconstruction_mode
+                )
                 prediction = prediction.cpu()
 
                 # this needs to go into background processes

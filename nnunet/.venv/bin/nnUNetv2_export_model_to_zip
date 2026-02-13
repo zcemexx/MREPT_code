@@ -1,0 +1,6 @@
+#!/Users/apple/Documents/MREPT_code/nnunet/.venv/bin/python
+import sys
+from nnunetv2.model_sharing.entry_points import export_pretrained_model_entry
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(export_pretrained_model_entry())

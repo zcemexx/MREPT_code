@@ -1,0 +1,6 @@
+#!/Users/apple/Documents/MREPT_code/nnunet/.venv/bin/python
+import sys
+from nnunetv2.evaluation.evaluate_predictions import evaluate_simple_entry_point
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(evaluate_simple_entry_point())
