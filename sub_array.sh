@@ -45,7 +45,3 @@ echo "================================================="
 # 3. 运行 MATLAB 计算
 # 移除所有备份逻辑，只保留计算。只有计算成功才退出 0，否则退出 1
 matlab -nodisplay -nodesktop -r "cd('$CODE_DIR'); try, run('labelsin1.m'); catch e, disp(e.message); exit(1); end, exit(0);"
-
-for i in 6 8 12 19 22 24 39 40 41 42 43 50 66 70 75 79 84; do
-    qsub -t $i sub_array.sh
-done
