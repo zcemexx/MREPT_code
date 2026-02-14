@@ -169,13 +169,15 @@ parfor ir = 1:nR
     r = radius_list(ir);
     params_r = Parameters;
     params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
+    cond_r = nan(nx, ny, nz, 'single');
 
     % 注意：确保你的 conductivityMapping 函数能处理 inf/nan
     if quietMappingLog
         warnState = warning;
         warning('off', 'all');
         try
-            evalc('[cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ''magnitude'', magnitude_noisy, ''segmentation'', tissueMask, ''estimatenoise'', estimatenoise);');
+            [cond_r, ~] = conductivityMapping(phi0_noisy, mask, params_r, ...
+                'magnitude', magnitude_noisy, 'segmentation', tissueMask, 'estimatenoise', estimatenoise);
         catch ME
             warning(warnState);
             rethrow(ME);
@@ -265,7 +267,7 @@ if doPlotting
             min(mae_vals),  max(mae_vals);
             min(rmse_vals), max(rmse_vals);
             min(ssim_vals), max(ssim_vals)
-        ];
+            ];
     else
         metricLimits = [0, 1; 0, 1; 0, 1];
     end
@@ -307,9 +309,9 @@ if doPlotting
     plot_metric_view(map_radius, map_mae, map_rmse, map_ssim, center, 2, 'Coronal', title_str, caseName, this_snr, figuresDir, metricLimits);
 
     h4 = figure('Visible', 'off'); set(h4, 'Position', [100, 100, 1000, 400]);
-    subplot(1,3,1); imagesc(sigma_gt(:,:,center(3))); axis image off; colormap(gca, 'jet'); colorbar; title('Ground Truth'); caxis([0 2.5]);
-    subplot(1,3,2); imagesc(cond_optimal(:,:,center(3))); axis image off; colormap(gca, 'jet'); colorbar; title('Optimal Recon'); caxis([0 2.5]);
-    subplot(1,3,3); imagesc(map_mae(:,:,center(3))); axis image off; colormap(gca, 'hot'); colorbar; title('Abs Error'); caxis([0 1]);
+    subplot(1,3,1); imagesc(sigma_gt(:,:,center(3))); axis image off; colormap(gca, 'jet'); colorbar; title('Ground Truth'); clim([0 2.5]);
+    subplot(1,3,2); imagesc(cond_optimal(:,:,center(3))); axis image off; colormap(gca, 'jet'); colorbar; title('Optimal Recon'); clim([0 2.5]);
+    subplot(1,3,3); imagesc(map_mae(:,:,center(3))); axis image off; colormap(gca, 'hot'); colorbar; title('Abs Error'); clim([0 1]);
     sgtitle(['Compare - ', title_str]);
     fNameComp = sprintf('%s_SNR%03d_Compare.png', caseName, round(this_snr));
     saveas(h4, fullfile(figuresDir, fNameComp));
