@@ -3,6 +3,7 @@
 *.nii.gz
 *.zip
 *.tar.gz
+*.code-workspace
 
 # 忽略文件夹
 data/

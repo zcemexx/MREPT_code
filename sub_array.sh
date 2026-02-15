@@ -4,7 +4,7 @@
 #$ -l h_rt=11:59:58            # 运行时间
 #$ -l mem=5G                  # 内存
 #$ -l tmpfs=10G               # 临时存储
-#$ -pe smp 8                  # 8核并行
+#$ -pe smp 32                  # 8核并行
 #$ -t 1-84                    # 根据你的文件数量设置 (1-84)
 #$ -wd /myriadfs/home/zcemexx/Scratch  # 工作目录
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
