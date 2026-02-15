@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #$ -S /bin/bash
-#$ -N MatlabBatch             # 作业名称
+#$ -N rerun39&42             # 作业名称
 #$ -l h_rt=11:59:58            # 运行时间
 #$ -l mem=5G                  # 内存
 #$ -l tmpfs=10G               # 临时存储
