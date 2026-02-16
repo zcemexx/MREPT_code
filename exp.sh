@@ -1,14 +1,15 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N eptPhase5
-#$ -l h_rt=14:00:00
+#$ -l h_rt=11:59:00
 #$ -l mem=5G
 #$ -l tmpfs=16G
-#$ -pe smp 8
+#$ -pe smp 16
 #$ -t 1-136
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -j y
+#$ -M zcemexx@ucl.ac.uk
 
 set -euo pipefail
 
