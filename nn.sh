@@ -6,7 +6,7 @@
 #$ -l tmpfs=40G
 #$ -pe smp 8
 #$ -l gpu=1
-#$ -t 0-4
+#$ -t 1-5
 #$ -tc 2
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
@@ -29,7 +29,7 @@ export nnUNet_results=/myriadfs/home/zcemexx/Scratch/nnUNet_results
 
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
-FOLD="${FOLD:-${SGE_TASK_ID:-0}}"
+FOLD="${FOLD:-$((SGE_TASK_ID - 1))}"
 TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae}"
 PLANS="${PLANS:-nnResUNetPlans}"
 
