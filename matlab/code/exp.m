@@ -14,7 +14,7 @@ addpath(genpath('/myriadfs/home/zcemexx/projects/MREPT_code/matlab/toolboxes'));
 projectRoot  = '/myriadfs/home/zcemexx/Scratch';
 datasetName  = 'exp001_EPT';
 baseDir      = fullfile(projectRoot, 'exp');
-inputDataDir = fullfile(projectRoot, 'data', 'ADEPT_raw');
+inputDataDir = fullfile(projectRoot, 'ADEPT_raw');
 outputBase   = fullfile(baseDir, datasetName);
 
 imagesTr     = fullfile(outputBase, 'imagesTr');
