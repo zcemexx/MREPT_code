@@ -48,6 +48,6 @@ test -f "$nnUNet_preprocessed/Dataset001_EPT/nnUNetPlans.json"
 # Keep this for quick troubleshooting of GPU allocation on node
 nvidia-smi || true
 
-nnUNetv2_train "$DATASET_ID" "$CONFIG" "$FOLD" -tr "$TRAINER" -pl "$PLANS"
+nnUNetv2_train "$DATASET_ID" "$CONFIG" "$FOLD" -tr "$TRAINER" -p "$PLANS"
 
 echo "=== nnUNet train job finished ==="
