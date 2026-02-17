@@ -1,0 +1,9 @@
+ID 
+-----------------------------------------------------------------------------------------------------------------
+ 512029 3.23034 eptPhase5  zcemexx      qw    02/16/2026 03:14:32                                   32 1
+ 515449 2.55303 nnUTrain   zcemexx      qw    02/16/2026 21:55:06                                    8 1
+ 515449 0.00000 nnUTrain   zcemexx      hqw   02/16/2026 21:55:06                                    8 2-5:1
+ 515536 0.00000 eptPhase5  zcemexx      qw    02/16/2026 22:43:51  
+ rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
+  zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/exp \
+  ~/Documents/mresult/outputs
