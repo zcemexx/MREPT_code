@@ -7,7 +7,6 @@
 
 # 忽略文件夹
 data/
-toolboxes/
 logs/
 __pycache__/
 nnUNet_raw/
