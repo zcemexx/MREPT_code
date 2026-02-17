@@ -23,6 +23,7 @@ metricsDir   = fullfile(baseDir, 'metrics');
 figuresDir   = fullfile(metricsDir, 'figures');
 plotCacheDir = fullfile(metricsDir, 'plot_cache');
 phase5Root   = fullfile(projectRoot, 'outputs', 'phase5');
+niiRoot      = fullfile(projectRoot, 'outputs', 'nii');
 
 if ~isfolder(baseDir); mkdir(baseDir); end
 if ~isfolder(imagesTr); mkdir(imagesTr); end
@@ -31,6 +32,7 @@ if ~isfolder(metricsDir); mkdir(metricsDir); end
 if ~isfolder(figuresDir); mkdir(figuresDir); end
 if ~isfolder(plotCacheDir); mkdir(plotCacheDir); end
 if ~isfolder(phase5Root); mkdir(phase5Root); end
+if ~isfolder(niiRoot); mkdir(niiRoot); end
 
 % --- 2. 任务定义（列表驱动） ---
 case_files = {'M6.mat', 'M8.mat', 'M12.mat', 'M19.mat', 'M22.mat', ...
@@ -202,6 +204,7 @@ fprintf('Metrics -> Mean_MAE: %.4f, RMSE: %.4f, SSIM: %.4f\n', res.Mean_MAE, res
 
 % --- 6.6 Phase5 输出（每任务独立目录） ---
 snrTag = sprintf('SNR%03d', round(this_snr));
+caseTag = sprintf('%s_SNR%03d', caseName, round(this_snr));
 taskOutDir = fullfile(phase5Root, caseName, snrTag);
 if ~isfolder(taskOutDir)
     mkdir(taskOutDir);
@@ -214,13 +217,22 @@ save(fullfile(taskOutDir, 'sigma_reconstructed.mat'), 'cond_optimal');
 error_map = abs(cond_optimal - sigma_gt);
 error_map(~mask) = 0;
 save(fullfile(taskOutDir, 'mae_map.mat'), 'error_map');
+save(fullfile(taskOutDir, 'ssim_map.mat'), 'ssim_map');
 write_metrics_json(fullfile(taskOutDir, 'metrics.json'), res);
 
-% --- 6.7 保留 nnUNet 训练数据输出（防覆盖：带 SNR 后缀） ---
-caseTag = sprintf('%s_SNR%03d', caseName, round(this_snr));
+% --- 6.6b NIfTI 输出（便于下游可视化与检查） ---
+taskNiiDir = fullfile(niiRoot, caseName, snrTag);
+if ~isfolder(taskNiiDir)
+    mkdir(taskNiiDir);
+end
 save_nii_gz(phi0_noisy,  fullfile(imagesTr, [caseTag, '_0000.nii.gz']));
 save_nii_gz(tissueMask,  fullfile(imagesTr, [caseTag, '_0001.nii.gz']));
-save_nii_gz(label_final, fullfile(labelsTr, [caseTag, '.nii.gz']));
+save_nii_gz(label_final,       fullfile(taskNiiDir, 'pred_kernel_map_label_final.nii.gz'));
+save_nii_gz(cond_optimal,      fullfile(taskNiiDir, 'sigma_reconstructed_cond_optimal.nii.gz'));
+save_nii_gz(error_map,         fullfile(taskNiiDir, 'mae_map_error_map.nii.gz'));
+ssim_out = ssim_map;
+ssim_out(~mask) = 0;
+save_nii_gz(ssim_out,          fullfile(taskNiiDir, 'ssim_map.nii.gz'));
 
 % --- 6.8 可视化 ---
 if doPlotting

@@ -7,3 +7,6 @@ ID
  rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
   zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/exp \
   ~/Documents/mresult/outputs
+
+  qsub -t 1-1 exp.sh
+  为exp.m增加输出，在outputs/p5nii中储存
