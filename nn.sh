@@ -43,7 +43,7 @@ echo "DATASET_ID=$DATASET_ID CONFIG=$CONFIG FOLD=$FOLD TRAINER=$TRAINER PLANS=$P
 test -d "$nnUNet_raw"
 test -d "$nnUNet_preprocessed"
 test -d "$nnUNet_results"
-test -f "$nnUNet_preprocessed/Dataset001_EPT/nnUNetPlans.json"
+test -f "$nnUNet_preprocessed/Dataset001_EPT/${PLANS}.json"
 
 # Keep this for quick troubleshooting of GPU allocation on node
 nvidia-smi || true
