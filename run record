@@ -10,3 +10,96 @@ ID
 
   qsub -t 1-1 exp.sh
   为exp.m增加输出，在outputs/p5nii中储存
+
+  1nnUNetv2_train "$DATASET_ID" "$CONFIG" "$FOLD" -tr "$TRAINER" -p "$PLANS"代码怎么改
+2 PLANS="${PLANS:-nnUNetPlans}"改完后还要重跑规划吗
+
+2/18 21；55
+job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID 
+-----------------------------------------------------------------------------------------------------------------
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 03:52:46 Bran@node-d00a-063.myriad.ucl.     8 52
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 05:15:04 Bran@node-d00a-021                 8 58
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 05:19:55 Bran@node-d00b-015.myriad.ucl.     8 59
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 05:37:24 Bran@node-d00a-239.myriad.ucl.     8 60
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 05:42:08 Bran@node-d00a-085.myriad.ucl.     8 61
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 05:46:31 Bran@node-d00a-161.myriad.ucl.     8 62
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 05:50:25 Bran@node-d00b-015.myriad.ucl.     8 63
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 05:58:56 Bran@node-d00a-008                 8 64
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 06:03:57 Bran@node-d00a-077.myriad.ucl.     8 65
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 06:09:10 Bran@node-d00a-083.myriad.ucl.     8 66
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 06:25:06 Bran@node-d00a-011                 8 67
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 06:33:55 Bran@node-d00a-142.myriad.ucl.     8 68
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 06:42:15 Bran@node-d00a-113.myriad.ucl.     8 69
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 06:54:54 Bran@node-d00a-008                 8 70
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 06:59:11 Bran@node-d00b-025.myriad.ucl.     8 71
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 07:12:14 Bran@node-d00a-136.myriad.ucl.     8 72
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 07:19:12 Bran@node-d00a-246.myriad.ucl.     8 73
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 07:28:06 Bran@node-d00a-086.myriad.ucl.     8 74
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 07:46:20 Bran@node-d00a-034                 8 75
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 07:57:50 Bran@node-d00a-090.myriad.ucl.     8 76
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 08:25:49 Bran@node-d00a-015                 8 77
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 08:33:33 Bran@node-d00a-217.myriad.ucl.     8 78
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 08:43:53 Bran@node-d00a-119.myriad.ucl.     8 79
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 09:04:29 Bran@node-d00a-039                 8 80
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 09:30:27 Bran@node-d00a-055.myriad.ucl.     8 81
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 09:47:18 Bran@node-d00a-014                 8 82
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 10:42:44 Bran@node-d00a-060.myriad.ucl.     8 83
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 11:14:18 Bran@node-d00a-230.myriad.ucl.     8 84
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 11:36:44 Bran@node-d00a-056.myriad.ucl.     8 85
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 11:42:53 Bran@node-d00a-136.myriad.ucl.     8 86
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 11:51:33 Bran@node-d00a-127.myriad.ucl.     8 87
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 12:04:44 Bran@node-d00a-008                 8 88
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 12:28:15 Bran@node-d00a-214.myriad.ucl.     8 89
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 13:04:35 Bran@node-d00b-010.myriad.ucl.     8 90
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 13:13:10 Bran@node-d00a-153.myriad.ucl.     8 91
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 13:18:07 Bran@node-d00a-017                 8 92
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 13:23:01 Bran@node-d00a-033                 8 93
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 13:38:04 Bran@node-d00b-025.myriad.ucl.     8 94
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 13:57:21 Bran@node-d00b-024.myriad.ucl.     8 95
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 14:08:54 Bran@node-d00b-020.myriad.ucl.     8 96
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 14:13:46 Bran@node-d00a-123.myriad.ucl.     8 97
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 14:19:36 Bran@node-d00a-126.myriad.ucl.     8 98
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 14:40:55 Bran@node-d00a-116.myriad.ucl.     8 99
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 14:44:37 Bran@node-d00a-230.myriad.ucl.     8 100
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 15:00:13 Bran@node-d00a-248.myriad.ucl.     8 101
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 15:07:31 Bran@node-d00a-147.myriad.ucl.     8 102
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 15:21:38 Bran@node-d00b-018.myriad.ucl.     8 103
+ 518399 2.03061 eptPhase5  zcemexx      r     02/18/2026 15:35:12 Bran@node-d00a-038                 8 104
+ 520448 2.03061 nnUTrain   zcemexx      r     02/18/2026 06:59:11 Bran@node-e00a-005                 8 1
+ 518399 2.02434 eptPhase5  zcemexx      qw    02/17/2026 18:18:23                                    8 105
+ 518399 2.02434 eptPhase5  zcemexx      hqw   02/17/2026 18:18:23                                    8 106-136:1
+ 520448 2.02386 nnUTrain   zcemexx      qw    02/18/2026 00:44:46                                    8 2
+ 520448 0.00000 nnUTrain   zcemexx      hqw   02/18/2026 00:44:46                                    8 3-5:1
+
+2/19 11;37
+ [zcemexx@login12 logs]$ qstat -u $USER | grep 520448
+ 520448 2.75000 nnUTrain   zcemexx      r     02/18/2026 06:59:11 Bran@node-e00a-005                 8 1
+ 520448 2.75000 nnUTrain   zcemexx      r     02/18/2026 18:03:48 Bran@node-e00a-009                 8 2
+ 520448 0.00000 nnUTrain   zcemexx      qw    02/18/2026 00:44:46                                    8 3
+ 520448 0.00000 nnUTrain   zcemexx      hqw   02/18/2026 00:44:46
+
+ grep "val_loss" training_log_2026_2_18_18_06_02.txt | tail -n 200
+ egrep "Epoch |train_loss|val_loss" training_log_2026_2_18_18_06_02.txt | tail -n 200
+ grep "val_loss" training_log_2026_2_18_18_06_02.txt  | awk '{print $NF}' | sort -g | head -n 1
+
+
+grep -n "val_loss 0.0605" training_log_2026_2_18_18_06_02.txt -B 2 -A 2
+
+ awk '/Epoch [0-9]+/{e=$0} /val_loss 0.0607/{print e; print; exit}' training_log_2026_2_18_18_06_02.txt
+
+0.0607
+
+
+
+# 先找 Epoch 143 在文件里的行号
+grep -n "Epoch 143" training_log_2026_2_18_07_01_24.txt
+
+# 假设上一步返回行号是 N，查看前后各 20 行
+sed -n "$((905-20)),$((905+20))p" training_log_2026_2_18_07_01_24.txt
+一条命令直接做（自动找行号）：
+
+bash
+2/21
+---
+ 520448 3.50000 nnUTrain   zcemexx      r     02/21/2026 05:57:33 Bran@node-e00a-018.myriad.ucl.     8 5
+[zcemexx@login12 ~]$ 
