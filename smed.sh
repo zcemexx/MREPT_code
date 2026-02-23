@@ -41,7 +41,7 @@ NPS="${NPS:-3}"
 EXTRA_FLAGS="${EXTRA_FLAGS:-}"
 
 # Input/output can be overridden by qsub -v INPUT_DIR=...,OUTPUT_DIR=...
-INPUT_DIR="${INPUT_DIR:-/myriadfs/home/zcemexx/Scratch/exp/exp001_EPT/imagesTs}"
+INPUT_DIR="${INPUT_DIR:-/myriadfs/home/zcemexx/Scratch/exp/exp001_EPT/imagesTr}"
 OUTPUT_DIR="${OUTPUT_DIR:-/myriadfs/home/zcemexx/Scratch/preds/fold0_median_test}"
 
 # keep safety checks
