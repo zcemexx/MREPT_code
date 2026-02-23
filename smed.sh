@@ -2,9 +2,9 @@
 #$ -S /bin/bash
 #$ -N nnUPredict
 #$ -l h_rt=00:00:19
-#$ -l mem=16G
-#$ -l tmpfs=40G
-#$ -pe smp 8
+#$ -l mem=8G
+#$ -l tmpfs=10G
+#$ -pe smp 4
 #$ -l gpu=1
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
@@ -33,7 +33,7 @@ TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae}"
 PLANS="${PLANS:-nnResUNetPlans}"
 FOLDS="${FOLDS:-0}"
 CHECKPOINT="${CHECKPOINT:-checkpoint_best.pth}"
-REC_MODE="${REC_MODE:-center_mean}"
+REC_MODE="${REC_MODE:-median}"
 STEP_SIZE="${STEP_SIZE:-0.3}"
 DEVICE="${DEVICE:-cuda}"
 NPP="${NPP:-3}"
@@ -42,7 +42,7 @@ EXTRA_FLAGS="${EXTRA_FLAGS:-}"
 
 # Input/output can be overridden by qsub -v INPUT_DIR=...,OUTPUT_DIR=...
 INPUT_DIR="${INPUT_DIR:-/myriadfs/home/zcemexx/Scratch/exp/exp001_EPT/imagesTs}"
-OUTPUT_DIR="${OUTPUT_DIR:-/myriadfs/home/zcemexx/Scratch/preds/fold0_center_test}"
+OUTPUT_DIR="${OUTPUT_DIR:-/myriadfs/home/zcemexx/Scratch/preds/fold0_median_test}"
 
 # keep safety checks
 : "${INPUT_DIR:?INPUT_DIR is empty}"
