@@ -103,3 +103,8 @@ bash
 ---
  520448 3.50000 nnUTrain   zcemexx      r     02/21/2026 05:57:33 Bran@node-e00a-018.myriad.ucl.     8 5
 [zcemexx@login12 ~]$ 
+
+---
+ 535255 3.07813 nnUPredict zcemexx      qw    02/23/2026 00:09:42                                    4        
+ 535256 2.53077 nnUPredict zcemexx      qw    02/23/2026 00:09:50                                    4        
+ 535257 2.35385 nnUPredict zcemexx      qw    02/23/2026 00:09:58                            

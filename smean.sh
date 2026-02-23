@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N nnUPredict
-#$ -l h_rt=00:00:19
+#$ -l h_rt=00:19:19
 #$ -l mem=6G
 #$ -l tmpfs=10G
 #$ -pe smp 4
