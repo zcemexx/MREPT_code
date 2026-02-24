@@ -213,13 +213,13 @@ end
 end
 
 function img = load_nii_any(path_in)
-if exist('nii_tool', 'file') == 2
+if exist('niftiread', 'file') == 2
+    img = niftiread(path_in);
+elseif exist('nii_tool', 'file') == 2
     n = nii_tool('load', path_in);
     img = n.img;
-elseif exist('niftiread', 'file') == 2
-    img = niftiread(path_in);
 else
-    error('No NIfTI reader available. Need nii_tool or niftiread.');
+    error('No NIfTI reader available. Need niftiread or nii_tool.');
 end
 img = single(img);
 end
