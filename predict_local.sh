@@ -1,31 +1,20 @@
-#!/bin/bash -l
-#$ -S /bin/bash
-#$ -N nnUPredict
-#$ -l h_rt=00:19:19
-#$ -l mem=6G
-#$ -l tmpfs=10G
-#$ -pe smp 4
-#$ -l gpu=1
-#$ -wd /myriadfs/home/zcemexx/Scratch
-#$ -o /myriadfs/home/zcemexx/Scratch/logs/
-#$ -j y
-#$ -m abe
-#$ -M zcemexx@ucl.ac.uk
-
+#!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== nnUNet predict job start ==="
+echo "=== nnUNet local predict start ==="
 echo "time: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "host: $(hostname)"
-echo "job: ${JOB_ID:-NA} task: ${SGE_TASK_ID:-NA}"
 
-module purge
-module load python/3.9.10
-source /myriadfs/home/zcemexx/venvs/nnunet39/bin/activate
+# Optional environment setup (override at runtime if needed)
+NNUNET_VENV="${NNUNET_VENV:-/myriadfs/home/zcemexx/venvs/nnunet39/bin/activate}"
+if [[ -f "$NNUNET_VENV" ]]; then
+  # shellcheck disable=SC1090
+  source "$NNUNET_VENV"
+fi
 
-export nnUNet_raw=/myriadfs/home/zcemexx/Scratch/nnUNet_raw
-export nnUNet_preprocessed=/myriadfs/home/zcemexx/Scratch/nnUNet_preprocessed
-export nnUNet_results=/myriadfs/home/zcemexx/Scratch/nnUNet_results
+export nnUNet_raw="${nnUNet_raw:-/myriadfs/home/zcemexx/Scratch/nnUNet_raw}"
+export nnUNet_preprocessed="${nnUNet_preprocessed:-/myriadfs/home/zcemexx/Scratch/nnUNet_preprocessed}"
+export nnUNet_results="${nnUNet_results:-/myriadfs/home/zcemexx/Scratch/nnUNet_results}"
 
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
@@ -36,20 +25,19 @@ CHECKPOINT="${CHECKPOINT:-checkpoint_best.pth}"
 REC_MODE="${REC_MODE:-center_mean}"
 STEP_SIZE="${STEP_SIZE:-0.3}"
 DEVICE="${DEVICE:-cuda}"
-NPP="${NPP:-3}"
-NPS="${NPS:-3}"
+NPP="${NPP:-2}"
+NPS="${NPS:-2}"
 EXTRA_FLAGS="${EXTRA_FLAGS:-}"
 
-# Input/output can be overridden by qsub -v INPUT_DIR=...,OUTPUT_DIR=...
-INPUT_DIR="${INPUT_DIR:-/myriadfs/home/zcemexx/Scratch/exp/exp001_EPT/imagesTr}"
-OUTPUT_DIR="${OUTPUT_DIR:-/myriadfs/home/zcemexx/Scratch/preds/fold0_center_test}"
+# Set these two at runtime:
+# INPUT_DIR=/path/to/imagesTs OUTPUT_DIR=/path/to/preds bash predict_local.sh
+INPUT_DIR="${INPUT_DIR:-}"
+OUTPUT_DIR="${OUTPUT_DIR:-}"
+: "${INPUT_DIR:?Set INPUT_DIR to folder with *_0000.nii.gz (and *_0001 if multi-channel)}"
+: "${OUTPUT_DIR:?Set OUTPUT_DIR for predictions}"
 
-# keep safety checks
-: "${INPUT_DIR:?INPUT_DIR is empty}"
-: "${OUTPUT_DIR:?OUTPUT_DIR is empty}"
-
-echo "python: $(which python)"
-python -V
+echo "python: $(which python || true)"
+python -V || true
 echo "nnUNet_raw=$nnUNet_raw"
 echo "nnUNet_preprocessed=$nnUNet_preprocessed"
 echo "nnUNet_results=$nnUNet_results"
@@ -62,7 +50,6 @@ test -d "$nnUNet_preprocessed"
 test -d "$nnUNet_results"
 test -d "$INPUT_DIR"
 test -f "$nnUNet_preprocessed/Dataset001_EPT/${PLANS}.json"
-
 mkdir -p "$OUTPUT_DIR"
 
 nvidia-smi || true
@@ -84,4 +71,4 @@ nnUNetv2_predict \
   --rec "$REC_MODE" \
   $EXTRA_FLAGS
 
-echo "=== nnUNet predict job finished ==="
+echo "=== nnUNet local predict finished ==="

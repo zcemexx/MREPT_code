@@ -16,7 +16,8 @@ end
 nargoutchk(2,3)
 
 % calculate kernel radius for multi-dimensional grid of ouput kernel
-kernelRadius = floor(kernelSize/2);
+kernelRadius = floor(double(kernelSize) / 2);
+kernelRadius = double(kernelRadius);
 
 % check kernel dimension
 k_dim = nnz(kernelRadius ~= 0);

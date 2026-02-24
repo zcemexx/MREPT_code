@@ -43,9 +43,13 @@ if isfield(Parameters, 'kDiffSize')
         Parameters.kDiffSize = 2 * floor(Parameters.kDiffSize./2) + 1;
     end
     Parameters.kDiffRadius = (Parameters.kDiffSize .* Parameters.VoxelSize) ./ 2;
+    Parameters.kDiffSize = double(Parameters.kDiffSize);
+    Parameters.kDiffRadius = double(Parameters.kDiffRadius);
 elseif isfield(Parameters, 'kDiffRadius')
     Parameters.kDiffSize = 2 * floor(Parameters.kDiffRadius ./ Parameters.VoxelSize) + 1;
     Parameters.kDiffRadius = (Parameters.kDiffSize .* Parameters.VoxelSize) ./ 2;
+    Parameters.kDiffSize = double(Parameters.kDiffSize);
+    Parameters.kDiffRadius = double(Parameters.kDiffRadius);
 else
     error('Please provide kernel size (diameter in voxel) or kernel radius (in mm) for differentiation.')
 end
