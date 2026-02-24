@@ -1,14 +1,13 @@
 #!/bin/bash
 
 # 配置
-LOCAL_REPO_DIR="/Users/apple/Documents/MREPT_code"
 REMOTE_HOST="myriad"
-REMOTE_REPO_DIR="~/projects/MREPT_code"
+REMOTE_REPO_DIR="~/projects/MREPT_code/matlab"
 
 echo "🎨 [1/2] Local: Pushing code to GitHub..."
-git -C "$LOCAL_REPO_DIR" add .
-git -C "$LOCAL_REPO_DIR" commit -m "Auto-sync $(date +'%Y-%m-%d %H:%M')" || true
-git -C "$LOCAL_REPO_DIR" push origin main
+git add .
+git commit -m "Auto-sync $(date +'%Y-%m-%d %H:%M')"
+git push origin main
 
 echo "🌐 [2/2] Remote: Pulling code on Myriad..."
 # 使用 bash -l -c 确保加载 Git 环境
