@@ -18,7 +18,7 @@ LOG_DIR="${LOG_DIR:-/home/zcemexx/Scratch/logs}"
 mkdir -p "$LOG_DIR"
 
 PHASE5_ROOT="${PHASE5_ROOT:-/home/zcemexx/Scratch/outputs/phase5}"
-RADIUS_PRED_ROOT="${RADIUS_PRED_ROOT:-/home/zcemexx/Scratch/outputs/phase5}"
+RADIUS_PRED_ROOT="${RADIUS_PRED_ROOT:-/home/zcemexx/Scratch/pred/preds_local}"
 RECON_INPLACE_IO="${RECON_INPLACE_IO:-true}"
 RECON_OUT_ROOT="${RECON_OUT_ROOT:-/home/zcemexx/Scratch/outputs/phase5_sigma_recon}"
 
@@ -36,10 +36,6 @@ find_radius_file() {
     local snr_tag="$4"
 
     local candidates=(
-        "$snr_path/${case_name}_${snr_tag}.nii.gz"
-        "$snr_path/${case_name}_${snr_tag}.nii"
-        "$snr_path/radiusmap.nii.gz"
-        "$snr_path/radiusmap.nii"
         "$pred_root/${case_name}_${snr_tag}.nii.gz"
         "$pred_root/${case_name}_${snr_tag}.nii"
         "$pred_root/${case_name}/${case_name}_${snr_tag}.nii.gz"
@@ -49,27 +45,49 @@ find_radius_file() {
     local p
     for p in "${candidates[@]}"; do
         if [[ -f "$p" ]]; then
-            printf '%s\n' "$p"
+            printf '%s
+' "$p"
             return 0
         fi
     done
 
     p="$(compgen -G "$pred_root/${case_name}_${snr_tag}*.nii.gz" | head -n 1 || true)"
     if [[ -n "$p" ]]; then
-        printf '%s\n' "$p"
+        printf '%s
+' "$p"
         return 0
     fi
 
     p="$(compgen -G "$pred_root/${case_name}_${snr_tag}*.nii" | head -n 1 || true)"
     if [[ -n "$p" ]]; then
-        printf '%s\n' "$p"
+        printf '%s
+' "$p"
+        return 0
+    fi
+
+    p="$(compgen -G "$pred_root/${case_name}/${case_name}_${snr_tag}*.nii.gz" | head -n 1 || true)"
+    if [[ -n "$p" ]]; then
+        printf '%s
+' "$p"
+        return 0
+    fi
+
+    p="$(compgen -G "$pred_root/${case_name}/${case_name}_${snr_tag}*.nii" | head -n 1 || true)"
+    if [[ -n "$p" ]]; then
+        printf '%s
+' "$p"
         return 0
     fi
 
     return 1
 }
 
-TASK_LIST="${TMPDIR:-/tmp}/recon_task_list_${JOB_ID_SAFE}_$$.txt"
+TMP_BASE="${TMPDIR:-/tmp}"
+if [[ ! -d "$TMP_BASE" ]]; then
+    TMP_BASE="/tmp"
+fi
+TASK_LIST="${TMP_BASE}/recon_task_list_${JOB_ID_SAFE}_$$.txt"
+: > "$TASK_LIST"
 trap 'rm -f "$TASK_LIST"' EXIT
 
 if [[ ! -d "$PHASE5_ROOT" ]]; then
@@ -163,6 +181,6 @@ export INPUT_DATA="$mat_path"
 export RADIUS_NII="$radius_path"
 export OUT_NII="$out_nii"
 
-matlab -nodisplay -nodesktop -r "cd('$CODE_DIR'); try, reconstruct_conductivity_from_radiusmap(); catch ME, disp(getReport(ME,'extended','hyperlinks','off')); exit(1); end; exit(0);"
+matlab -nodisplay -nodesktop -r "cd('$CODE_DIR'); addpath(pwd); addpath(fullfile(fileparts(pwd),'functions')); addpath(genpath(fullfile(fileparts(pwd),'toolboxes'))); rehash; try, reconstruct_conductivity_from_radiusmap(); catch ME, disp(getReport(ME,'extended','hyperlinks','off')); exit(1); end; exit(0);"
 
 echo "[DONE] Task $TASK_ID finished successfully."

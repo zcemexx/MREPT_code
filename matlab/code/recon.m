@@ -13,8 +13,7 @@ addpath(genpath(fullfile(repo_root, 'matlab', 'toolboxes')));
 
 % -------- Config (override with environment variables) --------
 phase5_root = getenv_default('PHASE5_ROOT', '/home/zcemexx/Scratch/outputs/phase5');
-pred_root = phase5_root;
-% pred_root = getenv_default('RADIUS_PRED_ROOT', '/myriadfs/home/zcemexx/Scratch/preds/fold0_center_test');
+pred_root = getenv_default('RADIUS_PRED_ROOT', '/home/zcemexx/Scratch/pred/preds_local');
 out_root = getenv_default('RECON_OUT_ROOT', fullfile(pred_root, 'sigma_recon'));
 recon_inplace_io = parse_bool(getenv_default('RECON_INPLACE_IO', 'true'));
 
@@ -137,24 +136,7 @@ end
 function radius_path = find_radius_map(local_snr_path, pred_root, case_name, snr_tag)
 radius_path = '';
 
-% Preferred in local SNR folder first:
-%   <local_snr_path>/<Case>_<SNR>.nii.gz
-%   <local_snr_path>/<Case>_<SNR>.nii
-local_candidates = {
-    fullfile(local_snr_path, sprintf('%s_%s.nii.gz', case_name, snr_tag))
-    fullfile(local_snr_path, sprintf('%s_%s.nii', case_name, snr_tag))
-    fullfile(local_snr_path, 'radiusmap.nii.gz')
-    fullfile(local_snr_path, 'radiusmap.nii')
-    };
-
-for i = 1:numel(local_candidates)
-    if isfile(local_candidates{i})
-        radius_path = local_candidates{i};
-        return;
-    end
-end
-
-% Then check prediction folder:
+% Only check prediction folder (do not use local SNR radius maps):
 %   <pred_root>/<Case>_<SNR>.nii.gz
 %   <pred_root>/<Case>_<SNR>.nii
 candidates = {
@@ -181,6 +163,21 @@ end
 
 pat2 = fullfile(pred_root, sprintf('%s_%s*.nii', case_name, snr_tag));
 hit = dir(pat2);
+if ~isempty(hit)
+    radius_path = fullfile(hit(1).folder, hit(1).name);
+    return;
+end
+
+% Fallback wildcard in pred_root/<Case>
+pat3 = fullfile(pred_root, case_name, sprintf('%s_%s*.nii.gz', case_name, snr_tag));
+hit = dir(pat3);
+if ~isempty(hit)
+    radius_path = fullfile(hit(1).folder, hit(1).name);
+    return;
+end
+
+pat4 = fullfile(pred_root, case_name, sprintf('%s_%s*.nii', case_name, snr_tag));
+hit = dir(pat4);
 if ~isempty(hit)
     radius_path = fullfile(hit(1).folder, hit(1).name);
 end
