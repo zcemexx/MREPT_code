@@ -19,7 +19,7 @@ mkdir -p "$LOG_DIR"
 
 PHASE5_ROOT="${PHASE5_ROOT:-/home/zcemexx/Scratch/outputs/phase5}"
 RADIUS_PRED_ROOT="${RADIUS_PRED_ROOT:-/home/zcemexx/Scratch/pred/preds_local}"
-RECON_INPLACE_IO="${RECON_INPLACE_IO:-true}"
+RECON_INPLACE_IO="${RECON_INPLACE_IO:-false}"
 RECON_OUT_ROOT="${RECON_OUT_ROOT:-/home/zcemexx/Scratch/outputs/phase5_sigma_recon}"
 
 TASK_ID="${SGE_TASK_ID:-${RECON_TASK_ID:-}}"
@@ -27,7 +27,7 @@ JOB_ID_SAFE="${JOB_ID:-NOJOB}"
 RUN_DATE="$(date '+%Y-%m-%d %H:%M:%S')"
 LOG_FILE="${LOG_DIR}/recon_JOB${JOB_ID_SAFE}_TASK${TASK_ID:-NA}.log"
 
-exec > >(tee -a "$LOG_FILE") 2> >(tee -a "$LOG_FILE" >&2)
+exec >"$LOG_FILE" 2>&1
 
 find_radius_file() {
     local snr_path="$1"

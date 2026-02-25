@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N eptPhase5
-#$ -l h_rt=15:59:00
+#$ -l h_rt=19:59:00
 #$ -l mem=5G
 #$ -l tmpfs=16G
 #$ -pe smp 8

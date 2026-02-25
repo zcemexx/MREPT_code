@@ -12,9 +12,9 @@ addpath(fullfile(repo_root, 'matlab', 'functions'));
 addpath(genpath(fullfile(repo_root, 'matlab', 'toolboxes')));
 
 % -------- Config (override by environment variables) --------
-RECON_ROOT = getenv_default('RECON_ROOT', '/home/zcemexx/Scratch/outputs/phase5');
-PHASE5_ROOT = getenv_default('PHASE5_ROOT', '/home/zcemexx/Scratch/outputs/phase5');
-GT_ROOT = getenv_default('GT_ROOT', '/home/zcemexx/Scratch/ADEPT_raw');
+RECON_ROOT = getenv_default('RECON_ROOT', '/Users/apple/Documents/mresult/recon'); %recon.m, constructed from predicted map
+PHASE5_ROOT = getenv_default('PHASE5_ROOT', '/Users/apple/Documents/mresult/optimal');%exp.m, constructed from optimal map
+GT_ROOT = getenv_default('GT_ROOT', '/Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy');
 OUT_DIR = getenv_default('COMPARE_OUT_ROOT', fullfile(PHASE5_ROOT, 'compare_panels'));
 
 RUN_MODE = lower(getenv_default('COMPARE_RUN_MODE', 'batch')); % batch | single
@@ -278,12 +278,12 @@ rmse_opt_slice = squeeze(rmse_opt(:,:,z));
 rmse_pred_slice = squeeze(rmse_pred(:,:,z));
 
 cond_vals = [gt_slice(mask_slice & isfinite(gt_slice)); ...
-             opt_slice(mask_slice & isfinite(opt_slice)); ...
-             pred_slice(mask_slice & isfinite(pred_slice))];
+    opt_slice(mask_slice & isfinite(opt_slice)); ...
+    pred_slice(mask_slice & isfinite(pred_slice))];
 mae_vals = [mae_opt_slice(mask_slice & isfinite(mae_opt_slice)); ...
-            mae_pred_slice(mask_slice & isfinite(mae_pred_slice))];
+    mae_pred_slice(mask_slice & isfinite(mae_pred_slice))];
 rmse_vals = [rmse_opt_slice(mask_slice & isfinite(rmse_opt_slice)); ...
-             rmse_pred_slice(mask_slice & isfinite(rmse_pred_slice))];
+    rmse_pred_slice(mask_slice & isfinite(rmse_pred_slice))];
 
 out.gt_slice = gt_slice;
 out.opt_slice = opt_slice;
@@ -460,7 +460,7 @@ end
 function records = discover_recon_records(root_dir)
 records = struct('case_name', {}, 'snr_tag', {}, 'snr_val', {}, 'path', {});
 all_files = [dir(fullfile(root_dir, '**', '*_sigma_recon.nii.gz')); ...
-             dir(fullfile(root_dir, '**', '*_sigma_recon.nii'))];
+    dir(fullfile(root_dir, '**', '*_sigma_recon.nii'))];
 for i = 1:numel(all_files)
     name = all_files(i).name;
     tok = regexp(name, '^(M\d+)_(SNR\d{3})_sigma_recon\.nii(\.gz)?$', 'tokens', 'once');
