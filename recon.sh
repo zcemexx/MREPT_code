@@ -27,7 +27,7 @@ JOB_ID_SAFE="${JOB_ID:-NOJOB}"
 RUN_DATE="$(date '+%Y-%m-%d %H:%M:%S')"
 LOG_FILE="${LOG_DIR}/recon_JOB${JOB_ID_SAFE}_TASK${TASK_ID:-NA}.log"
 
-exec >"$LOG_FILE" 2>&1
+exec > >(tee -a "$LOG_FILE") 2> >(tee -a "$LOG_FILE" >&2)
 
 find_radius_file() {
     local snr_path="$1"
