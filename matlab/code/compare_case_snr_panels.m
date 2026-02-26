@@ -12,9 +12,9 @@ addpath(fullfile(repo_root, 'matlab', 'functions'));
 addpath(genpath(fullfile(repo_root, 'matlab', 'toolboxes')));
 
 % -------- Config (override by environment variables) --------
-RECON_ROOT = getenv_default('RECON_ROOT', '/Users/apple/Documents/mresult/recon'); %recon.m, constructed from predicted map
-PHASE5_ROOT = getenv_default('PHASE5_ROOT', '/Users/apple/Documents/mresult/optimal');%exp.m, constructed from optimal map
-GT_ROOT = getenv_default('GT_ROOT', '/Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy');
+RECON_ROOT = getenv_default('RECON_ROOT', '/home/zcemexx/Scratch/outputs/phase5'); %recon.m, constructed from predicted map
+PHASE5_ROOT = getenv_default('PHASE5_ROOT', '/home/zcemexx/Scratch/outputs/phase5');%exp.m, constructed from optimal map
+GT_ROOT = getenv_default('GT_ROOT', '~/Scratch/data/ADEPT_raw');
 OUT_DIR = getenv_default('COMPARE_OUT_ROOT', fullfile(PHASE5_ROOT, 'compare_panels'));
 
 RUN_MODE = lower(getenv_default('COMPARE_RUN_MODE', 'batch')); % batch | single
