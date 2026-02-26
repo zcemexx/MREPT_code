@@ -15,7 +15,7 @@ addpath(genpath(fullfile(repo_root, 'matlab', 'toolboxes')));
 phase5_root = getenv_default('PHASE5_ROOT', '/home/zcemexx/Scratch/outputs/phase5');
 pred_root = getenv_default('RADIUS_PRED_ROOT', '/home/zcemexx/Scratch/pred/preds_local');
 out_root = getenv_default('RECON_OUT_ROOT', fullfile(pred_root, 'sigma_recon'));
-recon_inplace_io = parse_bool(getenv_default('RECON_INPLACE_IO', 'true'));
+recon_inplace_io = parse_bool(getenv_default('RECON_INPLACE_IO', 'false'));
 
 if ~isfolder(phase5_root)
     error('PHASE5_ROOT not found: %s', phase5_root);

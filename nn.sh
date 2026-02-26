@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N nnUTrain
-#$ -l h_rt=48:00:00
+#$ -l h_rt=46:59:00
 #$ -l mem=16G
 #$ -l tmpfs=40G
 #$ -pe smp 8
@@ -30,7 +30,7 @@ export nnUNet_results=/myriadfs/home/zcemexx/Scratch/nnUNet_results
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
 FOLD="${FOLD:-$((SGE_TASK_ID - 1))}"
-TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae}"
+TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae__grad}"
 PLANS="${PLANS:-nnResUNetPlans}"
 
 echo "python: $(which python)"
