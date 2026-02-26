@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #$ -S /bin/bash
-#$ -N nnUTrain
+#$ -N nngred
 #$ -l h_rt=46:59:00
 #$ -l mem=16G
 #$ -l tmpfs=40G
@@ -30,7 +30,7 @@ export nnUNet_results=/myriadfs/home/zcemexx/Scratch/nnUNet_results
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
 FOLD="${FOLD:-$((SGE_TASK_ID - 1))}"
-TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae__grad}"
+TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad}"
 PLANS="${PLANS:-nnResUNetPlans}"
 
 echo "python: $(which python)"
@@ -51,3 +51,8 @@ nvidia-smi || true
 nnUNetv2_train "$DATASET_ID" "$CONFIG" "$FOLD" -tr "$TRAINER" -p "$PLANS"
 
 echo "=== nnUNet train job finished ==="
+
+ 547824 2.06129 eptPhase5  zcemexx      r     02/25/2026 21:06:01 Bran@node-d00a-216.myriad.ucl.     8 95
+ 541862 0.00000 eptRecon   zcemexx      hqw   02/25/2026 01:43:58                                    8 110-133:1
+ 551475 0.00000 nnUTrain   zcemexx      qw    02/26/2026 00:34:53                                    8 1-5:1
+[zcemexx@login12 MREPT_code]$Connection to ssh-ga
