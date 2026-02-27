@@ -359,8 +359,8 @@ end
 
 function render_conductivity_panel(entries, climv, out_png)
 n = numel(entries);
-h = figure('Visible', 'off', 'Position', [60, 40, 1400, 260*n]);
-tl = tiledlayout(n, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+h = figure('Visible', 'off', 'Position', [60, 40, 1550, 260*n]);
+tl = tiledlayout(n, 3, 'TileSpacing', 'compact', 'Padding', 'loose');
 
 for i = 1:n
     e = entries(i);
@@ -375,7 +375,7 @@ for i = 1:n
         title(ax3, 'predicted');
     end
 
-    ylabel(ax1, e.snr_tag, 'FontWeight', 'bold');
+    add_snr_label(ax1, e.snr_tag);
 
     if e.available
         text(ax2, 0.02, 0.98, metric_text(e.metrics_opt), 'Units', 'normalized', ...
@@ -387,6 +387,10 @@ for i = 1:n
     end
 end
 
+cb = colorbar(tl, 'eastoutside');
+cb.Label.String = 'Conductivity';
+cb.FontSize = 9;
+
 sgtitle(tl, sprintf('%s | Conductivity (global clim)', entries(1).case_name));
 exportgraphics(h, out_png, 'Resolution', 220);
 close(h);
@@ -394,8 +398,8 @@ end
 
 function render_error_panel(entries, climv, out_png, map_type)
 n = numel(entries);
-h = figure('Visible', 'off', 'Position', [80, 40, 980, 260*n]);
-tl = tiledlayout(n, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+h = figure('Visible', 'off', 'Position', [80, 40, 1150, 260*n]);
+tl = tiledlayout(n, 2, 'TileSpacing', 'compact', 'Padding', 'loose');
 
 for i = 1:n
     e = entries(i);
@@ -418,7 +422,7 @@ for i = 1:n
         title(ax2, 'predicted');
     end
 
-    ylabel(ax1, e.snr_tag, 'FontWeight', 'bold');
+    add_snr_label(ax1, e.snr_tag);
 
     if e.available
         text(ax1, 0.02, 0.98, metric_text(e.metrics_opt), 'Units', 'normalized', ...
@@ -430,9 +434,19 @@ for i = 1:n
     end
 end
 
+cb = colorbar(tl, 'eastoutside');
+cb.Label.String = title_text;
+cb.FontSize = 9;
+
 sgtitle(tl, sprintf('%s | %s (global clim)', entries(1).case_name, title_text));
 exportgraphics(h, out_png, 'Resolution', 220);
 close(h);
+end
+
+function add_snr_label(ax, snr_tag)
+text(ax, -0.10, 0.5, snr_tag, 'Units', 'normalized', ...
+    'Rotation', 90, 'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+    'FontWeight', 'bold', 'Color', 'k', 'Clipping', 'off');
 end
 
 function draw_tile(ax, available, img, climv)
