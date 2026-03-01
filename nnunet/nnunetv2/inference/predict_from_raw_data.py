@@ -36,6 +36,9 @@ from nnunetv2.utilities.utils import create_lists_from_splitted_dataset_folder
 
 import pickle
 
+RECONSTRUCTION_MODES = ('gaussian', 'mean', 'center_mean', 'median')
+DEFAULT_RECONSTRUCTION_MODE = 'gaussian'
+
 class nnUNetPredictor(object):
     def __init__(self,
                  tile_step_size: float = 0.5,
@@ -330,7 +333,7 @@ class nnUNetPredictor(object):
                            folder_with_segs_from_prev_stage: str = None,
                            num_parts: int = 1,
                            part_id: int = 0,
-                           reconstruction_mode:str = "mean"):
+                           reconstruction_mode: str = DEFAULT_RECONSTRUCTION_MODE):
         """
         This is nnU-Net's default function for making predictions. It works best for batch predictions
         (predicting many images at once).
@@ -454,19 +457,25 @@ class nnUNetPredictor(object):
                                         truncated_ofname: Union[str, List[str], None],
                                         num_processes: int = 3,
                                         save_probabilities: bool = False,
-                                        num_processes_segmentation_export: int = default_num_processes):
+                                        num_processes_segmentation_export: int = default_num_processes,
+                                        reconstruction_mode: str = DEFAULT_RECONSTRUCTION_MODE):
         iterator = self.get_data_iterator_from_raw_npy_data(image_or_list_of_images,
                                                             segs_from_prev_stage_or_list_of_segs_from_prev_stage,
                                                             properties_or_list_of_properties,
                                                             truncated_ofname,
                                                             num_processes)
-        return self.predict_from_data_iterator(iterator, save_probabilities, num_processes_segmentation_export)
+        return self.predict_from_data_iterator(
+            iterator,
+            save_probabilities,
+            num_processes_segmentation_export,
+            reconstruction_mode=reconstruction_mode,
+        )
 
     def predict_from_data_iterator(self,
                                    data_iterator,
                                    save_probabilities: bool = False,
                                    num_processes_segmentation_export: int = default_num_processes,
-                                   reconstruction_mode:str = "mean"):
+                                   reconstruction_mode: str = DEFAULT_RECONSTRUCTION_MODE):
         """
         each element returned by data_iterator must be a dict with 'data', 'ofile' and 'data_properties' keys!
         If 'ofile' is None, the result will be returned instead of written to a file
@@ -547,7 +556,8 @@ class nnUNetPredictor(object):
     def predict_single_npy_array(self, input_image: np.ndarray, image_properties: dict,
                                  segmentation_previous_stage: np.ndarray = None,
                                  output_file_truncated: str = None,
-                                 save_or_return_probabilities: bool = False):
+                                 save_or_return_probabilities: bool = False,
+                                 reconstruction_mode: str = DEFAULT_RECONSTRUCTION_MODE):
         """
         image_properties must only have a 'spacing' key!
         """
@@ -561,7 +571,10 @@ class nnUNetPredictor(object):
 
         if self.verbose:
             print('predicting')
-        predicted_logits = self.predict_logits_from_preprocessed_data(dct['data']).cpu()
+        predicted_logits = self.predict_logits_from_preprocessed_data(
+            dct['data'],
+            reconstruction_mode=reconstruction_mode,
+        ).cpu()
 
         if self.verbose:
             print('resampling to original shape')
@@ -581,7 +594,8 @@ class nnUNetPredictor(object):
             else:
                 return ret
 
-    def predict_logits_from_preprocessed_data(self, data: torch.Tensor, reconstruction_mode:str = "mean") -> torch.Tensor:
+    def predict_logits_from_preprocessed_data(self, data: torch.Tensor,
+                                              reconstruction_mode: str = DEFAULT_RECONSTRUCTION_MODE) -> torch.Tensor:
         """
         IMPORTANT! IF YOU ARE RUNNING THE CASCADE, THE SEGMENTATION FROM THE PREVIOUS STAGE MUST ALREADY BE STACKED ON
         TOP OF THE IMAGE AS ONE-HOT REPRESENTATION! SEE PreprocessAdapter ON HOW THIS SHOULD BE DONE!
@@ -676,6 +690,44 @@ class nnUNetPredictor(object):
                 prediction += torch.flip(self.network(torch.flip(x, (*axes,))), (*axes,))
             prediction /= (len(axes_combinations) + 1)
         return prediction
+
+    def rec_gaussian(self, slicers, data, results_device: Optional[torch.device] = None):
+        inference_device = self.device
+        results_device = inference_device if results_device is None else results_device
+
+        predicted_logits = torch.zeros(
+            (self.label_manager.num_segmentation_heads, *data.shape[1:]),
+            dtype=torch.float32,
+            device=results_device,
+        )
+        n_predictions = torch.zeros(data.shape[1:], dtype=torch.float32, device=results_device)
+        gaussian = compute_gaussian(
+            tuple(self.configuration_manager.patch_size),
+            sigma_scale=1. / 8,
+            value_scaling_factor=10,
+            device=results_device,
+        )
+
+        for sl in tqdm(slicers):
+            workon = data[sl][None]
+            if workon.device != inference_device:
+                workon = workon.to(inference_device, non_blocking=False)
+            prediction = self._internal_maybe_mirror_and_predict(workon)[0]
+            if prediction.device != results_device:
+                prediction = prediction.to(results_device, non_blocking=False)
+            predicted_logits[sl] += prediction * gaussian
+            n_predictions[sl[1:]] += gaussian
+            del workon, prediction
+
+        if torch.any(n_predictions == 0):
+            raise RuntimeError('Gaussian reconstruction produced uncovered voxels. Check sliding-window coverage.')
+
+        predicted_logits /= n_predictions.unsqueeze(0)
+        del gaussian
+        empty_cache(self.device)
+        if results_device != self.device:
+            empty_cache(results_device)
+        return predicted_logits
     
     def rec_mean(self, slicers, data):
         results_device = self.device
@@ -885,9 +937,9 @@ class nnUNetPredictor(object):
                                                        data: torch.Tensor,
                                                        slicers,
                                                        do_on_device: bool = True,
-                                                       reconstruction_mode:str = "mean",
+                                                       reconstruction_mode: str = DEFAULT_RECONSTRUCTION_MODE,
                                                        ):
-        predicted_logits = n_predictions = prediction = gaussian = workon = None
+        predicted_logits = None
         results_device = self.device if do_on_device else torch.device('cpu')
 
         try:
@@ -898,36 +950,14 @@ class nnUNetPredictor(object):
                 print(f'move image to device {results_device}')
             data = data.to(results_device)
 
-            # preallocate arrays
-            if self.verbose:
-                print(f'preallocating results arrays on device {results_device}')
-            predicted_logits = torch.zeros((self.label_manager.num_segmentation_heads, *data.shape[1:]),
-                                           dtype=torch.half,
-                                           device=results_device)
-            n_predictions = torch.zeros(data.shape[1:], dtype=torch.half, device=results_device)
-            if self.use_gaussian:
-                gaussian = compute_gaussian(tuple(self.configuration_manager.patch_size), sigma_scale=1. / 8,
-                                            value_scaling_factor=10,
-                                            device=results_device)
-
             if self.verbose: print('running prediction')
             if not self.allow_tqdm and self.verbose: print(f'{len(slicers)} steps')
-            # for sl in tqdm(slicers, disable=not self.allow_tqdm): 
-            #     workon = data[sl][None]
-            #     workon = workon.to(self.device, non_blocking=False)
 
-            #     prediction = self._internal_maybe_mirror_and_predict(workon)[0].to(results_device)
-
-            #     # predicted_logits[sl] += (prediction * gaussian if self.use_gaussian else prediction)
-            #     # n_predictions[sl[1:]] += (gaussian if self.use_gaussian else 1)
-            #     #arthur : disable gaussian for reconstruction
-
-            #     predicted_logits[sl] += prediction
-            #     n_predictions[sl[1:]] += 1
-
-            # predicted_logits /= n_predictions
-
-            if reconstruction_mode == "mean":
+            # reconstruction_mode is authoritative; use_gaussian no longer selects the fusion path.
+            if reconstruction_mode == "gaussian":
+                print("Reconstruction: GAUSSIAN")
+                predicted_logits = self.rec_gaussian(slicers, data, results_device=results_device)
+            elif reconstruction_mode == "mean":
                 print("Reconstruction: MEAN")
                 predicted_logits = self.rec_mean(slicers, data)
             elif reconstruction_mode == "center_mean":
@@ -937,7 +967,7 @@ class nnUNetPredictor(object):
                 print("Reconstruction: MEDIAN")
                 predicted_logits = self.rec_median(slicers, data)
             else:
-                raise ValueError(f"Unknown reconstruction mode: {reconstruction_mode}")
+                raise ValueError(f"Unknown reconstruction mode: {reconstruction_mode}. Expected one of {RECONSTRUCTION_MODES}.")
 
             # check for infs
             if torch.any(torch.isinf(predicted_logits)):
@@ -945,14 +975,15 @@ class nnUNetPredictor(object):
                                    'reduce value_scaling_factor in compute_gaussian or increase the dtype of '
                                    'predicted_logits to fp32')
         except Exception as e:
-            del predicted_logits, n_predictions, prediction, gaussian, workon
+            del predicted_logits
             empty_cache(self.device)
             empty_cache(results_device)
             raise e
         
         return predicted_logits
 
-    def predict_sliding_window_return_logits(self, input_image: torch.Tensor, reconstruction_mode:str = "mean") \
+    def predict_sliding_window_return_logits(self, input_image: torch.Tensor,
+                                             reconstruction_mode: str = DEFAULT_RECONSTRUCTION_MODE) \
             -> Union[np.ndarray, torch.Tensor]:
         assert isinstance(input_image, torch.Tensor)
         self.network = self.network.to(self.device)
@@ -1051,8 +1082,9 @@ def predict_entry_point_modelfolder():
     parser.add_argument('--disable_progress_bar', action='store_true', required=False, default=False,
                         help='Set this flag to disable progress bar. Recommended for HPC environments (non interactive '
                              'jobs)')
-    parser.add_argument('--rec', type=str, default='mean', choices=['mean', 'center_mean', 'median',],
-                        help='Method of reconstruction: mean or median. Default is mean.')
+    parser.add_argument('--rec', type=str, default=DEFAULT_RECONSTRUCTION_MODE, choices=RECONSTRUCTION_MODES,
+                        help='Method of reconstruction for overlapping patches: gaussian, mean, center_mean, or '
+                             'median. Default is gaussian.')
     parser.add_argument('--center_crop_ratio', type=float, required=False, default=None,
                         help='Override center_mean auto crop ratio. If omitted, predictor loads it from '
                              'inference_config.json (if available).')
@@ -1168,8 +1200,9 @@ def predict_entry_point():
     parser.add_argument('--disable_progress_bar', action='store_true', required=False, default=False,
                         help='Set this flag to disable progress bar. Recommended for HPC environments (non interactive '
                              'jobs)')
-    parser.add_argument('--rec', type=str, default='mean', choices=['mean', 'center_mean', 'median',],
-                        help='Method of reconstruction: mean or median. Default is mean.')
+    parser.add_argument('--rec', type=str, default=DEFAULT_RECONSTRUCTION_MODE, choices=RECONSTRUCTION_MODES,
+                        help='Method of reconstruction for overlapping patches: gaussian, mean, center_mean, or '
+                             'median. Default is gaussian.')
     parser.add_argument('--center_crop_ratio', type=float, required=False, default=None,
                         help='Override center_mean auto crop ratio. If omitted, predictor loads it from '
                              'inference_config.json (if available).')

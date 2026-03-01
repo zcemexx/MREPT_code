@@ -175,6 +175,14 @@ job-ID  prior   name       user         state submit/start at     queue         
  
                                8 4,5
 
+conda create -n nnunet_test python=3.12 -y
+conda activate nnunet_test
+cd /Users/apple/Documents/MREPT_code/nnunet
+python -m pip install -U pip setuptools wheel
+python -m pip install -e .
+
+
+
 ## 深度学习 P-EPT 半径图 (Radius Map) 评估脚本撰写计划
 
 ### 模块一：数据加载与预处理 (Data Loading & Preprocessing)
@@ -254,7 +262,6 @@ job-ID  prior   name       user         state submit/start at     queue         
 - 背景 `0` 和半径 `1` 在训练里被压成同一个目标，而且推理输出永远不可能是背景。`_normalize_kernel_radius` 会把 `0` 和 `1` 都映射到 `0`；MRCT dataloader 还把 padding 也填成 `0`；推理/导出再把输出强制映射并裁剪到 `[1, 30]`。结果是背景、padding、半径 1 全混在一起学，导出的图又一定没有背景值。[dataset.json](/Users/apple/Documents/mresult/nnUNet_raw/Dataset001_EPT/dataset.json#L7) [dataset.json](/Users/apple/Documents/mresult/nnUNet_raw/Dataset001_EPT/dataset.json#L8) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L46) [data_loader_3d.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/dataloading/data_loader_3d.py#L92) [data_loader_2d.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/dataloading/data_loader_2d.py#L169) [predict_from_raw_data.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/predict_from_raw_data.py#L277) [export_prediction.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/export_prediction.py#L167)
 - 最终验证和下游模型选择仍在用分割 Dice/IoU，而不是回归指标。训练后 `perform_actual_validation()` 直接算 `summary.json` 里的 `foreground_mean["Dice"]`；`evaluate_predictions.py` 也是逐类 Dice；`find_best_configuration.py` 仍然按 Dice 选最优模型。这会直接误导验证结论和模型选择。[nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1480) [nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1492) [evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L103) [evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L112) [find_best_configuration.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/find_best_configuration.py#L103)
 - 训练、验证和 center-crop 搜索都没有用有效脑区 mask，只靠 `ignore_label` 排除无效体素；但数据集没有定义 `ignore`，所以背景和 padding 全部进入损失与搜索。这样优化目标会被大量空白区域主导，选出来的 `center_crop_ratio` 也会偏向“空背景 MAE 更低”，不一定对脑组织预测更好。[dataset.json](/Users/apple/Documents/mresult/nnUNet_raw/Dataset001_EPT/dataset.json#L6) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L97) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L159) [nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1162)
-- 训练增强实际上被关掉了。`get_training_transforms()` 直接返回 validation transforms，这会跳过 nnU-Net 原本的大部分数据增强；对你这种 67 case 的数据量，这是明显的泛化损失，不只是风格问题。[nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L49) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L63)
 - 验证完整性不严格。`compute_metrics_on_folder(..., chill=True)` 只评估 prediction 文件夹里实际存在的文件；少 case 时不会强制报错。`perform_actual_validation()` 正是这样调用的，所以一旦有 case 导出缺失，仍可能生成一个“看起来成功”的 `summary.json`。[evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L135) [evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L140) [nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1487)
 在日志里明确打印 expected_cases、predicted_cases、missing_cases
 **可忽略**
@@ -268,20 +275,42 @@ job-ID  prior   name       user         state submit/start at     queue         
 
 如果你要，我下一步可以直接给你一个最小修复方案，按优先级分成：
 添加weighted reconstruction模式，搞清inference_config.json
+融合patch tile size = 0.3
+ kmin=1，那这些 bbox 外的 0 最后会被裁成 1。
 1. 必修：把任务统一成真正的单通道回归。
-2. 必修：把最终验证改成 `MAE + Acc±1/±3/±5 + 有效脑区 mask`。
+2. 必修：把最终验证改成 `MAE + Acc±1/±3/±5 + 有效脑区 mask`。 **确定最终验证指标
 3. 可选：恢复合理的数据增强和更干净的导出链。
 4. 添加自提前止损（Early Stopping）
 5. 开启部分训练增强
 6. 预测标签输出错误：虽然 sliding-window 的 pad 会被裁掉，但导出回原始空间时，你现在的回归导出代码还有另一件事：
-
+先提交不带gradient的普通版，gradient函数检查完后再加上 gradient 版本。
+---
+7. grad损失函数检查
 在 export_prediction.py 到 export_prediction.py，它先把原图 bbox 外的位置填成 0；
 然后在 export_prediction.py 到 export_prediction.py，又把整张图 clip 到 [kmin, kmax]。
 
-如果 kmin=1，那这些 bbox 外的 0 最后会被裁成 1。
-所以：
+使用了新的trainer
+ 
+审核这套对我的repo中的nnunet的修改方案
+https://github.com/zcemexx/MREPT_code.git
 
-sliding-window pad：会被裁掉，不直接保留
-bbox 外导出区域：当前代码里可能会被写成 1
+ 1. 禁止使用所有训练增强以及deep supervision，确保训练目标纯粹是单通道回归。
 
-~/Scratch/outputs/phase5/radiustest
+ 2. 回归导出函数的数据穿透（接口签名问题）
+你计划在导出顺序中“将预测和 valid mask 一起还原到原始空间”。
+
+隐藏陷阱：nnU-Net 原生的 export_prediction_from_logits 是作为一个独立的后台进程（Background Worker）运行的，它的参数签名中默认只接收网络输出的 prediction 数组和 properties 字典，根本拿不到原始的 data 输入，因此在 worker 内部是无法直接获取 valid_mask 的。
+
+修正建议：在 predict_from_raw_data.py 的推理循环中，当调用 export_pool.starmap_async 时，必须修改参数列表，把提取好的 valid_mask_preprocessed（即 data[1]）作为额外的参数，显式传递给你的新函数 export_regression_prediction(...)。
+
+3. 反归一化 (Un-normalization) 的显式声明
+方案 4.3 提到了：“在 valid_mask == 1 内：round, clip 到 [1, 30]”。
+
+隐藏陷阱：sigmoid 输出的值域是 [0, 1]。在 round 和 clip 之前，必须进行显式的数学反归一化。
+
+修正建议：在你的 convert_predicted_regression_to_original_shape 函数中，必须先执行反归一化，例如 pred = pred * (30 - 1) + 1（如果你的 normalize_radius 是 min-max 归一化），然后再执行 round 和 clip。建议将这段逻辑与 dataset.json 中的 kernel_radius_min 和 kernel_radius_max 绑定，避免硬编码。
+
+4. JSON 元数据的索引一致性 (0-based vs 1-based)
+隐藏陷阱：你在 MATLAB 生成脚本中计划写入 "mask_channel_index": 1。Python 是 0-based 索引（0 代表幅度/相位，1 代表 Mask），而 MATLAB 是 1-based 索引。
+
+修正建议：务必在 MATLAB 脚本 generate_dataset_json.m 的注释中明确说明，写入的 1 是指代 Python 的第 2 个通道。在 Python 端读取时直接使用 idx = dataset_json['mask_channel_index'] 然后取 data[:, idx:idx+1]，确保不会因为语言习惯引起通道错位。

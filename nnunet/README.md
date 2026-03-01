@@ -48,10 +48,9 @@ Have a look at the [AFP implementation](https://github.com/Phyrise/nnUNet_transl
 
 inference :
 ```bash
-nnUNetv2_predict -d DatasetY -i INPUT -o OUTPUT -c 3d_fullres -p nnResUNetPlans -tr nnUNetTrainerMRCT_mae -f FOLD [optional : -chk checkpoint_best.pth -step_size 0.3 --rec (mean,median)]
+nnUNetv2_predict -d DatasetY -i INPUT -o OUTPUT -c 3d_fullres -p nnResUNetPlans -tr nnUNetTrainerMRCT_mae -f FOLD [optional : -chk checkpoint_best.pth -step_size 0.3 --rec (gaussian,mean,center_mean,median)]
 ```
 
 - A smaller step_size (default: 0.5, recommended: 0.3) at inference can reduce some artifacts on images.
-- --rec allows selecting the reconstruction method for overlapping patches (```mean```or ```median```).
+- --rec allows selecting the reconstruction method for overlapping patches (default: ```gaussian```; available: ```gaussian```, ```mean```, ```center_mean```, ```median```).
 The ```median``` is still experimental and currently RAM-intensive.
-

@@ -1327,7 +1327,7 @@ class nnUNetTrainer(object):
                                         self.inference_allowed_mirroring_axes)
 
         _, all_val_keys = self.do_split()
-        validation_reconstruction_mode = 'mean'
+        validation_reconstruction_mode = 'gaussian'
         selected_center_crop_ratio = float(predictor.center_crop_ratio)
         if len(self.center_crop_ratio_candidates) > 0:
             # In multi-node DDP, local rank 0 exists on every node. Gate writes on global rank 0 instead.
