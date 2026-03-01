@@ -44,6 +44,21 @@ echo "SWEEP_OUT_DIR: $SWEEP_OUT_DIR"
 echo "Log: $LOG_FILE"
 echo "================================================="
 
+if ! type module >/dev/null 2>&1; then
+    if [[ -f /etc/profile.d/modules.sh ]]; then
+        # Load environment-modules for interactive bash tests.
+        source /etc/profile.d/modules.sh
+    elif [[ -f /usr/share/Modules/init/bash ]]; then
+        # Alternative Modules init path used on some clusters.
+        source /usr/share/Modules/init/bash
+    fi
+fi
+
+if ! type module >/dev/null 2>&1; then
+    echo "[ERROR] 'module' command not found. Run with qsub, './sweep.sh', or 'bash -l sweep.sh'."
+    exit 1
+fi
+
 module purge
 module load matlab
 
