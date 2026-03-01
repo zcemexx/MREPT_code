@@ -127,9 +127,9 @@ repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo_root, 'matlab', 'functions'));
 addpath(genpath(fullfile(repo_root, 'matlab', 'toolboxes')));
 
-PHASE5_ROOT = getenv_default('SWEEP_PHASE5_ROOT', '/Users/apple/Documents/mresult/outputs/outputs/phase5');
-GT_ROOT = getenv_default('SWEEP_GT_ROOT', '/Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy');
-OUT_DIR = getenv_default('SWEEP_OUT_DIR', fullfile(PHASE5_ROOT, 'radius_sweep_online'));
+PHASE5_ROOT = getenv_default('SWEEP_PHASE5_ROOT', '/myriadfs/home/zcemexx/Scratch/outputs/phase5');
+GT_ROOT = getenv_default('SWEEP_GT_ROOT', '/myriadfs/home/zcemexx/Scratch/data/ADEPT_raw');
+OUT_DIR = getenv_default('SWEEP_OUT_DIR', fullfile(PHASE5_ROOT, 'radiustest'));
 
 if ~isfolder(PHASE5_ROOT)
     error('PHASE5_ROOT not found: %s', PHASE5_ROOT);

@@ -1,10 +1,10 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N eptSweep
-#$ -l h_rt=19:59:00
+#$ -l h_rt=23:59:00
 #$ -l mem=5G
 #$ -l tmpfs=16G
-#$ -pe smp 8
+#$ -pe smp 32
 #$ -t 1-136
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
@@ -20,8 +20,8 @@ LOG_DIR="${LOG_DIR:-/myriadfs/home/zcemexx/Scratch/logs}"
 mkdir -p "$LOG_DIR"
 
 export SWEEP_PHASE5_ROOT="${SWEEP_PHASE5_ROOT:-/myriadfs/home/zcemexx/Scratch/outputs/phase5}"
-export SWEEP_GT_ROOT="${SWEEP_GT_ROOT:-/myriadfs/home/zcemexx/Scratch/ADEPT_raw}"
-export SWEEP_OUT_DIR="${SWEEP_OUT_DIR:-${SWEEP_PHASE5_ROOT}/radius_sweep_online}"
+export SWEEP_GT_ROOT="${SWEEP_GT_ROOT:-/myriadfs/home/zcemexx/Scratch/data/ADEPT_raw}"
+export SWEEP_OUT_DIR="${SWEEP_OUT_DIR:-${SWEEP_PHASE5_ROOT}/radiustest}"
 
 TASK_ID="${SGE_TASK_ID:-NA}"
 JOB_ID_SAFE="${JOB_ID:-NOJOB}"

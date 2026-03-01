@@ -144,3 +144,144 @@ rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
 rsync -avzP -e "ssh -J zcemexx@ssh-gateway.ucl.ac.uk" \
 zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/outputs/phase5/M12/SNR150/sigma_reconstructed.mat \
 /Users/apple/Documents/mresult/optimal/
+
+
+[zcemexx@login13 ~]$ qstat
+job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID 
+-----------------------------------------------------------------------------------------------------------------
+ 553648 3.40239 nngred     zcemexx      r     02/26/2026 14:42:15 Bran@node-e00a-014.myriad.ucl.     8 1
+ 553648 2.54959 nngred     zcemexx      qw    02/26/2026 11:14:36                                    8 2
+ 553648 0.00000 nngred     zcemexx      hqw   02/26/2026 11:14:36                                    8 3-5:1
+
+ matlab -batch "run('~/projects/MREPT_code/matlab/code/compare_case_snr_panels.m')"
+
+ 10；32qrsh 37suc
+
+ [zcemexx@login13 ~]$ qstat
+job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID 
+-----------------------------------------------------------------------------------------------------------------
+ 553648 2.14119 nngred     zcemexx      r     02/26/2026 14:42:15 Bran@node-e00a-014.myriad.ucl.     8 1
+ 553648 2.14119 nngred     zcemexx      r     02/27/2026 02:07:30 Bran@node-e00a-006                 8 2
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 18:39:55 Bran@node-d00a-105.myriad.ucl.     8 1
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 18:56:49 Bran@node-d00a-142.myriad.ucl.     8 2
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 19:05:42 Bran@node-d00a-157.myriad.ucl.     8 3
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 19:42:56 Bran@node-d00a-018                 8 4
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 20:03:28 Bran@node-d00a-137.myriad.ucl.     8 5
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 20:12:43 Bran@node-d00a-239.myriad.ucl.     8 6
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 20:23:59 Bran@node-d00a-218.myriad.ucl.     8 7
+ 562398 2.14119 eptSweep   zcemexx      r     02/27/2026 20:32:39 Bran@node-d00a-214.myriad.ucl.     8 8
+ 553648 0.00000 nngred     zcemexx      qw    02/26/2026 11:14:36                                    8 3
+ 553648 0.00000 nngred     zcemexx      hqw   02/26/2026 11:14:36      
+ 
+                               8 4,5
+
+## 深度学习 P-EPT 半径图 (Radius Map) 评估脚本撰写计划
+
+### 模块一：数据加载与预处理 (Data Loading & Preprocessing)
+
+**目标**：为后续计算准备好对齐的数据矩阵和掩膜 (Masks)。
+
+-   **输入加载**：读取模型预测的半径图 Rpred​ 和穷举法生成的 Ground Truth 半径图 Rgt​。
+-   **掩膜加载**：读取利用 FreeSurfer 或 FSL 提取的组织掩膜 ，包括全脑 (Whole Brain)、白质 (WM)、灰质 (GM) 和脑脊液 (CSF)。
+    
+-   **预处理**：计算全局绝对误差矩阵 Eabs​\=∣Rpred​−Rgt​∣ 和符号残差矩阵 Eres​\=Rpred​−Rgt​，作为后续统计的基础变量。
+
+* * *
+
+### 模块二：直接参数误差评估 (Direct Parameter Metrics)
+
+**目标**：量化模型预测值与最优值之间的整体一致性。 **代码实现步骤**：
+
+1.  **基础统计误差 (MAE & RMSE)**：
+    
+    -   基于 Eabs​ 计算全局和不同组织 (WM, GM, CSF) 的平均绝对误差 (MAE) 和均方根误差 (RMSE)。
+2.  **多级容差准确率 (Multi-level Tolerance Accuracy)**（_核心融合项_）：
+    
+    -   针对 1−40 的大参数范围，弃用单一的 ±1 标准，改为实现多阈值准确率函数：
+        
+        Acc±δ​\=N1​i\=1∑N​\[∣Rpred,i​−Rgt,i​∣≤δ\]
+        
+    -   **Acc±1​**：统计误差 ≤1 的像素占比，衡量极高精度的预测能力。
+    -   **Acc±3​**：统计误差 ≤3 的像素占比（约 7.5% 偏差），作为工程可接受的良好预测标准。
+    -   **Acc±5​**：统计误差 ≤5 的像素占比，衡量模型的鲁棒性，捕获大致正确的趋势。
+3.  **残差分布直方图 (Error Distribution)**：
+    
+    -   统计 Eres​ 的频数，绘制直方图，检查分布的偏度。确认模型是否存在系统性偏置（例如总是倾向于预测较小的核，导致直方图左偏）。
+
+* * *
+
+### 模块三：组织特异性与空间分析 (Tissue-specific & Spatial Analysis)
+
+**目标**：探究模型在不同生理环境和几何结构下的表现。 **代码实现步骤**：
+
+1.  **按组织类型交叉统计 (Tissue-wise Statistics)**：
+    
+    -   将模块二中的“多级容差准确率” (Acc±1​,Acc±3​,Acc±5​) 和 MAE/RMSE 应用于 WM, GM, CSF 三个掩膜内部 。
+        
+    -   _科研落脚点_：输出一个对比矩阵，验证模型在低对比度 (WM) 和高对比度 (CSF) 区域的稳健性。
+2.  **边界残差图生成 (Residual Map & Edge Integrity)**：
+    
+    -   将符号残差矩阵 Eres​ 映射为jet (例如：红色表示高估，蓝色表示低估，白色表示准确)，附带colorbar，全局使用同一clim保证可比性。
+    -   **边界提取与高亮**：利用 Canny 或 Sobel 算子在组织掩膜上提取交界处 (Boundaries)，将其叠加在残差图上，重点观察和量化边界区域的平均误差。
+
+* * *
+
+### 模块四：可视化与报告生成 (Visualization & Reporting)
+防护：
+若 N_valid==0 或 mean_gt<=0 或非有限值，则 nMAE=NaN，并靠 Valid_Ratio/Oracle_Coverage体现失效。
+不再使用“组织全体素均值 GT”做分母。
+对oracle map，使用与sweep脚本相同的索引逻辑，寻找文件pred_kernel_map.mat（请勿搞混，这是oracle）。对于模型预测的radius map，搜索固定路径文件夹中的文件nn_M*_SNR*.nii.gz
+
+**目标**：自动化生成用于论文和阶段性汇报的图表 。 **代码实现步骤**：
+
++1
+
+1.  **自动表格生成**：将多级准确率和 MAE 按全脑及不同组织格式化输出为 CSV 表格，方便直接放入最终报告 (Final Report)。
+2.  **图表导出**：
+    
+    -   保存包含 GT、预测图和残差图对比的并排视图 (Side-by-side plots) 。
+        
+    -   保存残差分布直方图。
+
+
+
+
+# 训练代码问题
+按当前仓库里能看到的代码，这个模型/训练链路的问题如下。
+
+**严重**
+- 任务定义前后不一致：数据集仍是 `background + r1..r30` 的 31 类分割定义，默认 `LabelManager` 会让网络输出 31 个 head；但 trainer 用 `sigmoid + L1` 把它当单通道回归在训练，导出时又硬编码只取第 0 通道。除非远端 `plans` 用了一个本地仓库里不存在的自定义 `LabelManager`，否则这是致命问题，30 个输出头基本被浪费，保存出来的 radius map 也不对应完整模型输出。[dataset.json](/Users/apple/Documents/mresult/nnUNet_raw/Dataset001_EPT/dataset.json#L6) [generate_dataset_json.m](/Users/apple/Documents/MREPT_code/matlab/functions/generate_dataset_json.m#L22) [label_handling.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/utilities/label_handling/label_handling.py#L230) [nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L214) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L90) [export_prediction.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/export_prediction.py#L109)
+- 背景 `0` 和半径 `1` 在训练里被压成同一个目标，而且推理输出永远不可能是背景。`_normalize_kernel_radius` 会把 `0` 和 `1` 都映射到 `0`；MRCT dataloader 还把 padding 也填成 `0`；推理/导出再把输出强制映射并裁剪到 `[1, 30]`。结果是背景、padding、半径 1 全混在一起学，导出的图又一定没有背景值。[dataset.json](/Users/apple/Documents/mresult/nnUNet_raw/Dataset001_EPT/dataset.json#L7) [dataset.json](/Users/apple/Documents/mresult/nnUNet_raw/Dataset001_EPT/dataset.json#L8) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L46) [data_loader_3d.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/dataloading/data_loader_3d.py#L92) [data_loader_2d.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/dataloading/data_loader_2d.py#L169) [predict_from_raw_data.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/predict_from_raw_data.py#L277) [export_prediction.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/export_prediction.py#L167)
+- 最终验证和下游模型选择仍在用分割 Dice/IoU，而不是回归指标。训练后 `perform_actual_validation()` 直接算 `summary.json` 里的 `foreground_mean["Dice"]`；`evaluate_predictions.py` 也是逐类 Dice；`find_best_configuration.py` 仍然按 Dice 选最优模型。这会直接误导验证结论和模型选择。[nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1480) [nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1492) [evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L103) [evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L112) [find_best_configuration.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/find_best_configuration.py#L103)
+- 训练、验证和 center-crop 搜索都没有用有效脑区 mask，只靠 `ignore_label` 排除无效体素；但数据集没有定义 `ignore`，所以背景和 padding 全部进入损失与搜索。这样优化目标会被大量空白区域主导，选出来的 `center_crop_ratio` 也会偏向“空背景 MAE 更低”，不一定对脑组织预测更好。[dataset.json](/Users/apple/Documents/mresult/nnUNet_raw/Dataset001_EPT/dataset.json#L6) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L97) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L159) [nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1162)
+- 训练增强实际上被关掉了。`get_training_transforms()` 直接返回 validation transforms，这会跳过 nnU-Net 原本的大部分数据增强；对你这种 67 case 的数据量，这是明显的泛化损失，不只是风格问题。[nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L49) [nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L63)
+- 验证完整性不严格。`compute_metrics_on_folder(..., chill=True)` 只评估 prediction 文件夹里实际存在的文件；少 case 时不会强制报错。`perform_actual_validation()` 正是这样调用的，所以一旦有 case 导出缺失，仍可能生成一个“看起来成功”的 `summary.json`。[evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L135) [evaluate_predictions.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_predictions.py#L140) [nnUNetTrainer.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/nnUNetTrainer.py#L1487)
+在日志里明确打印 expected_cases、predicted_cases、missing_cases
+**可忽略**
+- 导出函数会在每个 case 打一行 shape/min/max 调试输出，worker 多时日志会很脏，但不影响结果。[export_prediction.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/export_prediction.py#L110)
+- `resample_and_save()` 仍按分割 logits 去做 next-stage `.npz` 导出；当前 `3d_fullres` 非级联配置下通常不会走到，但一旦以后启用 cascade 就会错。[export_prediction.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/export_prediction.py#L207)
+- `validation_step()` 每个 batch 重新实例化一次 `myMAE()`，只是小的无谓开销。[nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L158)
+- `get_plain_dataloaders()` 里有无效赋值和可读性差的代码，但不改变行为。[nnUNetTrainerMRCT_mae.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py#L114)
+- `export_prediction.py` 里保留了重复 import 和大段旧分割导出注释，维护性差，但不是功能性 bug。[export_prediction.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/export_prediction.py#L80) [export_prediction.py](/Users/apple/Documents/MREPT_code/nnunet/nnunetv2/inference/export_prediction.py#L143)
+
+这次结论是：核心不是“调几个超参数”，而是任务定义、输出头、背景处理、验证指标四条主线同时不一致。先修严重项，否则后面的 loss 曲线、Dice、可视化都不值得信。
+
+如果你要，我下一步可以直接给你一个最小修复方案，按优先级分成：
+添加weighted reconstruction模式，搞清inference_config.json
+1. 必修：把任务统一成真正的单通道回归。
+2. 必修：把最终验证改成 `MAE + Acc±1/±3/±5 + 有效脑区 mask`。
+3. 可选：恢复合理的数据增强和更干净的导出链。
+4. 添加自提前止损（Early Stopping）
+5. 开启部分训练增强
+6. 预测标签输出错误：虽然 sliding-window 的 pad 会被裁掉，但导出回原始空间时，你现在的回归导出代码还有另一件事：
+
+在 export_prediction.py 到 export_prediction.py，它先把原图 bbox 外的位置填成 0；
+然后在 export_prediction.py 到 export_prediction.py，又把整张图 clip 到 [kmin, kmax]。
+
+如果 kmin=1，那这些 bbox 外的 0 最后会被裁成 1。
+所以：
+
+sliding-window pad：会被裁掉，不直接保留
+bbox 外导出区域：当前代码里可能会被写成 1
+
+~/Scratch/outputs/phase5/radiustest
