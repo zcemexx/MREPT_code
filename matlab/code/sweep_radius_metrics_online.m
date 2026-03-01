@@ -3,9 +3,8 @@
 % Purpose
 % -------------------------------------------------------------------------
 % This script performs NaN-safe radius sweep evaluation for conductivity
-% reconstruction with a strict physical filter, optional parallel radius
-% mapping, and an ordered online winner update engine (arena-style). It
-% produces two CSV tables per task:
+% reconstruction with a strict physical filter and an online O(N) update
+% engine (arena-style winner update). It produces two CSV tables per task:
 %
 % 1) per_radius_metrics.csv
 %    - Fixed-kernel benchmark across Radius = 1..40.
@@ -67,9 +66,7 @@
 %      and update min_err_map / best_r_map / best_cond_map on better_mask.
 %
 % Memory behavior:
-%   - Serial mode: O(N) streaming update (no full radius stack).
-%   - Parallel mode: caches one conductivity volume per radius before
-%     ordered cap-curve update.
+%   O(N) w.r.t. voxel count (does not keep all radii stacks in memory).
 %
 % -------------------------------------------------------------------------
 % Metrics (NaN-safe, fair normalization)
@@ -166,36 +163,13 @@ snr_tag = sprintf('SNR%03d', snr_val);
 fprintf('Task %d/%d mapped to Case=%s, SNR=%d\n', task_id, n_total, case_name, snr_val);
 
 radius_list = 1:40;
-n_radius = numel(radius_list);
-
-% --- Parallel pool config (aligned with exp.m) ---
-poolObj = gcp('nocreate');
-if isempty(poolObj)
-    nSlotsStr = getenv('NSLOTS');
-    nSlots = str2double(nSlotsStr);
-    if ~isfinite(nSlots) || nSlots < 1
-        nSlots = 1;
-    end
-    if nSlots > 1
-        parpool('local', nSlots);
-        poolObj = gcp('nocreate');
-        fprintf('并行池已启动，核心数 (NSLOTS): %d\n', nSlots);
-    else
-        fprintf('运行在单核模式。\n');
-    end
-end
-
-use_parallel = ~isempty(poolObj) && poolObj.NumWorkers > 1;
-if use_parallel
-    fprintf('Radius sweep 并行模式启用，workers=%d\n', poolObj.NumWorkers);
-end
 
 % Tissue definitions from GT Segmentation only.
 TISSUE_NAMES = {'Global', 'WM', 'GM', 'CSF'};
 TISSUE_CODES = [0, 1, 2, 3]; % 0 means Segmentation > 0
 
 per_header = {'Case','SNR','Radius','Tissue','nMAE','RMSE','Valid_Ratio','N_Valid','N_Total','Status'};
-count_headers = arrayfun(@(r) sprintf('R%02d_Count', r), radius_list, 'UniformOutput', false);
+count_headers = arrayfun(@(r) sprintf('R%02d_Count', r), 1:40, 'UniformOutput', false);
 cap_header = [{'Case','SNR','Cap','Tissue','nMAE','RMSE','Valid_Ratio','Oracle_Coverage','N_Valid','N_Total'}, count_headers, {'Status'}];
 
 per_rows = cell(0, numel(per_header));
@@ -228,42 +202,14 @@ try
     best_r_map = zeros(size(sigma_gt), 'uint8');
     best_cond_map = nan(size(sigma_gt), 'single');
 
-    tissue_masks = cell(1, numel(TISSUE_NAMES));
-    for it = 1:numel(TISSUE_NAMES)
-        tissue_masks{it} = get_tissue_mask(seg, TISSUE_CODES(it));
-    end
+    for r = radius_list
+        params_r = Parameters;
+        params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
 
-    if use_parallel
-        cond_cache = cell(1, n_radius);
-        parfor ir = 1:n_radius
-            r = radius_list(ir);
-            params_r = Parameters;
-            params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
+        cond_r = run_mapping(phi0_noisy, mask_global, params_r, magnitude_noisy, seg, estimatenoise, quietMappingLog);
 
-            cond_r = run_mapping(phi0_noisy, mask_global, params_r, magnitude_noisy, seg, estimatenoise, quietMappingLog);
-
-            if do_filter
-                cond_r(cond_r < 0 | cond_r > 10) = NaN;
-            end
-
-            cond_cache{ir} = cond_r;
-        end
-    end
-
-    for ir = 1:n_radius
-        r = radius_list(ir);
-        if use_parallel
-            cond_r = cond_cache{ir};
-            cond_cache{ir} = [];
-        else
-            params_r = Parameters;
-            params_r.kDiffSize = [2*r+1, 2*r+1, 2*r+1];
-
-            cond_r = run_mapping(phi0_noisy, mask_global, params_r, magnitude_noisy, seg, estimatenoise, quietMappingLog);
-
-            if do_filter
-                cond_r(cond_r < 0 | cond_r > 10) = NaN;
-            end
+        if do_filter
+            cond_r(cond_r < 0 | cond_r > 10) = NaN;
         end
 
         e_r = abs(cond_r - sigma_gt);
@@ -276,7 +222,7 @@ try
         % Table A: fixed radius performance.
         for it = 1:numel(TISSUE_NAMES)
             tissue_name = TISSUE_NAMES{it};
-            tissue_mask = tissue_masks{it};
+            tissue_mask = get_tissue_mask(seg, TISSUE_CODES(it));
             [nmae, rmse, valid_ratio, n_valid, n_total_tissue] = calc_metrics_aligned(cond_r, sigma_gt, tissue_mask);
 
             per_rows(end+1, :) = {case_name, snr_val, r, tissue_name, nmae, rmse, valid_ratio, n_valid, n_total_tissue, 'ok'}; %#ok<AGROW>
@@ -285,11 +231,11 @@ try
         % Table B: cap curve at Cap=r (online oracle best so far).
         for it = 1:numel(TISSUE_NAMES)
             tissue_name = TISSUE_NAMES{it};
-            tissue_mask = tissue_masks{it};
+            tissue_mask = get_tissue_mask(seg, TISSUE_CODES(it));
 
             [nmae, rmse, valid_ratio, n_valid, n_total_tissue] = calc_metrics_aligned(best_cond_map, sigma_gt, tissue_mask);
             oracle_cov = calc_oracle_coverage(best_r_map, tissue_mask);
-            counts = radius_counts(best_r_map, tissue_mask, n_radius);
+            counts = radius_counts(best_r_map, tissue_mask, 40);
 
             cap_rows(end+1, :) = [{case_name, snr_val, r, tissue_name, nmae, rmse, valid_ratio, oracle_cov, n_valid, n_total_tissue}, ...
                 num2cell(counts), {'ok'}]; %#ok<AGROW>
@@ -308,7 +254,7 @@ catch ME
         tissue_name = TISSUE_NAMES{it};
         per_rows(end+1, :) = {case_name, snr_val, NaN, tissue_name, NaN, NaN, NaN, NaN, NaN, status_txt}; %#ok<AGROW>
         cap_rows(end+1, :) = [{case_name, snr_val, NaN, tissue_name, NaN, NaN, NaN, NaN, NaN, NaN}, ...
-            num2cell(zeros(1,n_radius)), {status_txt}]; %#ok<AGROW>
+            num2cell(zeros(1,40)), {status_txt}]; %#ok<AGROW>
     end
 end
 
