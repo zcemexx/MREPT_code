@@ -30,8 +30,11 @@ export nnUNet_results=/myriadfs/home/zcemexx/Scratch/nnUNet_results
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
 FOLD="${FOLD:-$((SGE_TASK_ID - 1))}"
-TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad}"
+TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad_regfix}"
 PLANS="${PLANS:-nnResUNetPlans}"
+
+# Legacy trainers such as nnUNetTrainerMRCT_mae* are kept only for historical runs.
+# New regression experiments must use nnUNetTrainerMRCT_mae_grad_regfix and fresh result folders/checkpoints.
 
 echo "python: $(which python)"
 python -V

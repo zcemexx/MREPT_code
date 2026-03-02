@@ -29,7 +29,7 @@ export nnUNet_results=/myriadfs/home/zcemexx/Scratch/nnUNet_results
 
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
-TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae}"
+TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad_regfix}"
 PLANS="${PLANS:-nnResUNetPlans}"
 FOLDS="${FOLDS:-0}"
 CHECKPOINT="${CHECKPOINT:-checkpoint_best.pth}"
@@ -39,6 +39,9 @@ DEVICE="${DEVICE:-cuda}"
 NPP="${NPP:-3}"
 NPS="${NPS:-3}"
 EXTRA_FLAGS="${EXTRA_FLAGS:-}"
+
+# Legacy trainers/checkpoints are invalid for the regfix regression path.
+# Do not mix these runs with old result directories.
 
 # Input/output can be overridden by qsub -v INPUT_DIR=...,OUTPUT_DIR=...
 INPUT_DIR="${INPUT_DIR:-/myriadfs/home/zcemexx/Scratch/exp/exp001_EPT/imagesTr}"

@@ -18,7 +18,7 @@ export nnUNet_results="${nnUNet_results:-/myriadfs/home/zcemexx/Scratch/nnUNet_r
 
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
-TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae}"
+TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad_regfix}"
 PLANS="${PLANS:-nnResUNetPlans}"
 FOLDS="${FOLDS:-0}"
 CHECKPOINT="${CHECKPOINT:-checkpoint_best.pth}"
@@ -28,6 +28,9 @@ DEVICE="${DEVICE:-cuda}"
 NPP="${NPP:-2}"
 NPS="${NPS:-2}"
 EXTRA_FLAGS="${EXTRA_FLAGS:-}"
+
+# Legacy trainers/checkpoints are not compatible with the regfix regression pipeline.
+# Keep prediction outputs isolated from old experiment directories.
 
 # Set these two at runtime:
 # INPUT_DIR=/path/to/imagesTs OUTPUT_DIR=/path/to/preds bash predict_local.sh

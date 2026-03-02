@@ -4,6 +4,8 @@ function generate_dataset_json(outputFolder, numTraining, description)
 %   Channel 00: Phase
 %   Channel 01: Segmentation Mask
 %   Labels: 0=Background, 1=1, 2=2... (Radius classes)
+%   mask_channel_index 使用 Python 0-based 语义:
+%   数值 1 表示第 2 个输入通道，也就是 *_0001 的组织 mask
 
     if nargin < 3
         description = 'EPT Radius Labeling Task';
@@ -44,6 +46,10 @@ function generate_dataset_json(outputFolder, numTraining, description)
     jsonStruct.reference = 'UCL EPT Project';
     jsonStruct.release = '1.0';
     jsonStruct.description = description;
+    jsonStruct.regression_task = true;
+    jsonStruct.kernel_radius_min = 1;
+    jsonStruct.kernel_radius_max = 30;
+    jsonStruct.mask_channel_index = 1;
     
     % --- 5. 写入文件 ---
     jsonPath = fullfile(outputFolder, 'dataset.json');
