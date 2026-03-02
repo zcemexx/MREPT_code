@@ -8,12 +8,16 @@ from batchgenerators.utilities.file_and_folder_operations import load_json, join
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.ensembling.ensemble import ensemble_crossvalidations
 from nnunetv2.evaluation.accumulate_cv_results import accumulate_cv_results
-from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder, load_summary_json
+from nnunetv2.evaluation.evaluate_predictions import (
+    compute_metrics_on_folder,
+    load_summary_json,
+)
 from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw, nnUNet_results
 from nnunetv2.postprocessing.remove_connected_components import determine_postprocessing
 from nnunetv2.utilities.file_path_utilities import maybe_convert_to_dataset_name, get_output_folder, \
     convert_identifier_to_trainer_plans_config, get_ensemble_name, folds_tuple_to_string
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
+from nnunetv2.utilities.regression import is_regression_dataset
 
 default_trained_models = tuple([
     {'plans': 'nnUNetPlans', 'configuration': '2d', 'trainer': 'nnUNetTrainer'},
@@ -21,6 +25,12 @@ default_trained_models = tuple([
     {'plans': 'nnUNetPlans', 'configuration': '3d_lowres', 'trainer': 'nnUNetTrainer'},
     {'plans': 'nnUNetPlans', 'configuration': '3d_cascade_fullres', 'trainer': 'nnUNetTrainer'},
 ])
+
+
+def _resolve_task_selection(summary: dict, dataset_json: dict):
+    if summary.get('task_type') == 'regression' or is_regression_dataset(dataset_json):
+        return 'regression', 'MAE', 'min', summary['foreground_mean']['MAE']
+    return 'segmentation', 'Dice', 'max', summary['foreground_mean']['Dice']
 
 
 def filter_available_models(model_dict: Union[List[dict], Tuple[dict, ...]], dataset_name_or_id: Union[str, int]):
@@ -98,12 +108,23 @@ def find_best_configuration(dataset_name_or_id,
         identifier = os.path.basename(output_folder)
         merged_output_folder = join(output_folder, f'crossval_results_folds_{folds_tuple_to_string(folds)}')
         accumulate_cv_results(output_folder, merged_output_folder, folds, num_processes, overwrite)
+        dataset_json = load_json(join(merged_output_folder, 'dataset.json'))
+        summary = load_summary_json(join(merged_output_folder, 'summary.json'))
+        task_type, selection_metric, selection_mode, score = _resolve_task_selection(summary, dataset_json)
         all_results[identifier] = {
             'source': merged_output_folder,
-            'result': load_summary_json(join(merged_output_folder, 'summary.json'))['foreground_mean']['Dice']
+            'result': score,
+            'task_type': task_type,
+            'selection_metric': selection_metric,
+            'selection_mode': selection_mode,
         }
 
-    if allow_ensembling:
+    task_types = {v['task_type'] for v in all_results.values()}
+    if len(task_types) != 1:
+        raise RuntimeError(f'Mixed task types are not supported in find_best_configuration: {task_types}')
+    task_type = next(iter(task_types))
+
+    if allow_ensembling and task_type == 'segmentation':
         for i in range(len(allowed_trained_models)):
             for j in range(i + 1, len(allowed_trained_models)):
                 m1, m2 = allowed_trained_models[i], allowed_trained_models[j]
@@ -134,43 +155,62 @@ def find_best_configuration(dataset_name_or_id,
                                           num_processes)
                 all_results[identifier] = \
                     {
-                    'source': output_folder_ensemble,
-                    'result': load_summary_json(join(output_folder_ensemble, 'summary.json'))['foreground_mean']['Dice']
+                        'source': output_folder_ensemble,
+                        'result': load_summary_json(join(output_folder_ensemble, 'summary.json'))['foreground_mean']['Dice'],
+                        'task_type': 'segmentation',
+                        'selection_metric': 'Dice',
+                        'selection_mode': 'max',
                     }
+    elif allow_ensembling and task_type == 'regression':
+        print('Skipping ensembling for regression task: MAE-based selection only considers direct model outputs.')
 
-    # pick best and report inference command
-    best_score = max([i['result'] for i in all_results.values()])
-    best_keys = [k for k in all_results.keys() if all_results[k]['result'] == best_score]  # may never happen but theoretically
-    # there can be a tie. Let's pick the first model in this case because it's going to be the simpler one (ensembles
-    # come after single configs)
+    selection_metric = next(iter({v['selection_metric'] for v in all_results.values()}))
+    selection_mode = next(iter({v['selection_mode'] for v in all_results.values()}))
+    if selection_mode == 'max':
+        best_score = max([i['result'] for i in all_results.values()])
+    else:
+        best_score = min([i['result'] for i in all_results.values()])
+    best_keys = [k for k in all_results.keys() if all_results[k]['result'] == best_score]
     best_key = best_keys[0]
 
     print()
     print('***All results:***')
     for k, v in all_results.items():
         print(f'{k}: {v["result"]}')
-    print(f'\n*Best*: {best_key}: {all_results[best_key]["result"]}')
+    print(f'\n*Best*: {best_key}: {all_results[best_key]["result"]} ({selection_metric}, mode={selection_mode})')
     print()
 
-    print('***Determining postprocessing for best model/ensemble***')
-    determine_postprocessing(all_results[best_key]['source'], join(nnUNet_preprocessed, dataset_name, 'gt_segmentations'),
-                             plans_file_or_dict=join(all_results[best_key]['source'], 'plans.json'),
-                             dataset_json_file_or_dict=join(all_results[best_key]['source'], 'dataset.json'),
-                             num_processes=num_processes, keep_postprocessed_files=True)
+    postprocessing_file = None
+    postprocessed_result = all_results[best_key]["result"]
+    if task_type == 'segmentation':
+        print('***Determining postprocessing for best model/ensemble***')
+        determine_postprocessing(all_results[best_key]['source'], join(nnUNet_preprocessed, dataset_name, 'gt_segmentations'),
+                                 plans_file_or_dict=join(all_results[best_key]['source'], 'plans.json'),
+                                 dataset_json_file_or_dict=join(all_results[best_key]['source'], 'dataset.json'),
+                                 num_processes=num_processes, keep_postprocessed_files=True)
+        postprocessing_file = join(all_results[best_key]['source'], 'postprocessing.pkl')
+        postprocessed_result = load_json(join(all_results[best_key]['source'], 'postprocessed', 'summary.json'))['foreground_mean']['Dice']
+    else:
+        print('***Skipping postprocessing for regression task***')
 
     # in addition to just reading the console output (how it was previously) we should return the information
     # needed to run the full inference via API
     return_dict = {
+        'task_type': task_type,
+        'selection_metric': selection_metric,
+        'selection_mode': selection_mode,
         'folds': folds,
         'dataset_name_or_id': dataset_name_or_id,
         'considered_models': allowed_trained_models,
-        'ensembling_allowed': allow_ensembling,
+        'ensembling_allowed': allow_ensembling and task_type == 'segmentation',
         'all_results': {i: j['result'] for i, j in all_results.items()},
         'best_model_or_ensemble': {
             'result_on_crossval_pre_pp': all_results[best_key]["result"],
-            'result_on_crossval_post_pp': load_json(join(all_results[best_key]['source'], 'postprocessed', 'summary.json'))['foreground_mean']['Dice'],
-            'postprocessing_file': join(all_results[best_key]['source'], 'postprocessing.pkl'),
+            'result_on_crossval_post_pp': postprocessed_result,
+            'postprocessing_file': postprocessing_file,
             'some_plans_file': join(all_results[best_key]['source'], 'plans.json'),
+            'selection_metric': selection_metric,
+            'selection_mode': selection_mode,
             # just needed for label handling, can
             # come from any of the ensemble members (if any)
             'selected_model_or_models': []
@@ -248,10 +288,11 @@ def print_inference_instructions(inference_info_dict: dict, instructions_file: s
         _print_and_maybe_write_to_file('\nThe run ensembling with:\n')
         _print_and_maybe_write_to_file(f"nnUNetv2_ensemble -i {output_folder_str} -o {output_ensemble} -np {default_num_processes}")
 
-    _print_and_maybe_write_to_file("\n***Once inference is completed, run postprocessing like this:***\n")
-    _print_and_maybe_write_to_file(f"nnUNetv2_apply_postprocessing -i OUTPUT_FOLDER -o OUTPUT_FOLDER_PP "
-          f"-pp_pkl_file {inference_info_dict['best_model_or_ensemble']['postprocessing_file']} -np {default_num_processes} "
-          f"-plans_json {inference_info_dict['best_model_or_ensemble']['some_plans_file']}")
+    if inference_info_dict['best_model_or_ensemble']['postprocessing_file']:
+        _print_and_maybe_write_to_file("\n***Once inference is completed, run postprocessing like this:***\n")
+        _print_and_maybe_write_to_file(f"nnUNetv2_apply_postprocessing -i OUTPUT_FOLDER -o OUTPUT_FOLDER_PP "
+              f"-pp_pkl_file {inference_info_dict['best_model_or_ensemble']['postprocessing_file']} -np {default_num_processes} "
+              f"-plans_json {inference_info_dict['best_model_or_ensemble']['some_plans_file']}")
 
 
 def dumb_trainer_config_plans_to_trained_models_dict(trainers: List[str], configs: List[str], plans: List[str]):

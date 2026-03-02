@@ -22,8 +22,12 @@ import nnunetv2
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.inference.data_iterators import PreprocessAdapterFromNpy, preprocessing_iterator_fromfiles, \
     preprocessing_iterator_fromnpy
-from nnunetv2.inference.export_prediction import export_prediction_from_logits, \
-    convert_predicted_logits_to_segmentation_with_correct_shape
+from nnunetv2.inference.export_prediction import (
+    convert_predicted_logits_to_segmentation_with_correct_shape,
+    convert_predicted_regression_to_original_shape,
+    export_prediction_from_logits,
+    export_regression_prediction,
+)
 from nnunetv2.inference.sliding_window_prediction import compute_gaussian, \
     compute_steps_for_sliding_window
 from nnunetv2.utilities.file_path_utilities import get_output_folder, check_workers_alive_and_busy
@@ -32,6 +36,7 @@ from nnunetv2.utilities.helpers import empty_cache, dummy_context
 from nnunetv2.utilities.json_export import recursive_fix_for_json_export
 from nnunetv2.utilities.label_handling.label_handling import determine_num_input_channels
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
+from nnunetv2.utilities.regression import extract_valid_mask_from_input, is_regression_dataset
 from nnunetv2.utilities.utils import create_lists_from_splitted_dataset_folder
 
 import pickle
@@ -261,25 +266,12 @@ class nnUNetPredictor(object):
             self.set_center_crop_ratio(selected_ratio, source='inference_config')
 
     def _is_regression_kernel_task(self) -> bool:
-        if self.dataset_json is not None and self.dataset_json.get('regression_task', False):
+        if is_regression_dataset(self.dataset_json):
             return True
-        if self.dataset_json is not None and ('kernel_radius_min' in self.dataset_json or 'kernel_radius_max' in self.dataset_json):
-            return True
-        if self.trainer_name is not None and 'MRCT' in self.trainer_name:
+        trainer_name = self.trainer_name.lower() if isinstance(self.trainer_name, str) else ''
+        if 'regfix' in trainer_name or 'regressionbase' in trainer_name:
             return True
         return False
-
-    def _get_kernel_radius_range(self) -> Tuple[float, float]:
-        dct = self.dataset_json if isinstance(self.dataset_json, dict) else {}
-        kmin = float(dct.get('kernel_radius_min', dct.get('regression_min', 1.0)))
-        kmax = float(dct.get('kernel_radius_max', dct.get('regression_max', 30.0)))
-        if kmax <= kmin:
-            raise ValueError('kernel radius max must be larger than min')
-        return kmin, kmax
-
-    def _map_prediction_to_kernel_radius(self, prediction: torch.Tensor) -> torch.Tensor:
-        kmin, kmax = self._get_kernel_radius_range()
-        return torch.sigmoid(prediction) * (kmax - kmin) + kmin
 
     def _manage_input_and_output_lists(self, list_of_lists_or_source_folder: Union[str, List[List[str]]],
                                        output_folder_or_list_of_truncated_output_files: Union[None, str, List[str]],
@@ -483,6 +475,7 @@ class nnUNetPredictor(object):
         with multiprocessing.get_context("spawn").Pool(num_processes_segmentation_export) as export_pool:
             worker_list = [i for i in export_pool._pool]
             r = []
+            is_regression_task = self._is_regression_kernel_task()
             for preprocessed in data_iterator:
                 data = preprocessed['data']
                 if isinstance(data, str):
@@ -508,34 +501,60 @@ class nnUNetPredictor(object):
                     proceed = not check_workers_alive_and_busy(export_pool, worker_list, r, allowed_num_queued=2)
 
                 prediction = self.predict_logits_from_preprocessed_data(data, reconstruction_mode = reconstruction_mode).cpu()
+                valid_mask_preprocessed = None
+                if is_regression_task:
+                    valid_mask_preprocessed = extract_valid_mask_from_input(data, self.dataset_json)[0].cpu().numpy()
 
                 if ofile is not None:
-                    # this needs to go into background processes
-                    # export_prediction_from_logits(prediction, properties, self.configuration_manager, self.plans_manager,
-                    #                               self.dataset_json, ofile, save_probabilities)
                     print('sending off prediction to background worker for resampling and export')
+                    export_fn = export_regression_prediction if is_regression_task else export_prediction_from_logits
+                    export_args = (
+                        prediction,
+                        valid_mask_preprocessed,
+                        properties,
+                        self.configuration_manager,
+                        self.plans_manager,
+                        self.dataset_json,
+                        ofile,
+                        save_probabilities,
+                    ) if is_regression_task else (
+                        prediction,
+                        properties,
+                        self.configuration_manager,
+                        self.plans_manager,
+                        self.dataset_json,
+                        ofile,
+                        save_probabilities,
+                    )
                     r.append(
                         export_pool.starmap_async(
-                            export_prediction_from_logits,
-                            ((prediction, properties, self.configuration_manager, self.plans_manager,
-                              self.dataset_json, ofile, save_probabilities),)
+                            export_fn,
+                            (export_args,)
                         )
                     )
                 else:
-                    # convert_predicted_logits_to_segmentation_with_correct_shape(
-                    #             prediction, self.plans_manager,
-                    #              self.configuration_manager, self.label_manager,
-                    #              properties,
-                    #              save_probabilities)
-
                     print('sending off prediction to background worker for resampling')
+                    convert_fn = convert_predicted_regression_to_original_shape if is_regression_task \
+                        else convert_predicted_logits_to_segmentation_with_correct_shape
+                    convert_args = (
+                        prediction,
+                        valid_mask_preprocessed,
+                        self.plans_manager,
+                        self.configuration_manager,
+                        properties,
+                        self.dataset_json,
+                    ) if is_regression_task else (
+                        prediction,
+                        self.plans_manager,
+                        self.configuration_manager,
+                        self.label_manager,
+                        properties,
+                        save_probabilities,
+                    )
                     r.append(
                         export_pool.starmap_async(
-                            convert_predicted_logits_to_segmentation_with_correct_shape, (
-                                (prediction, self.plans_manager,
-                                 self.configuration_manager, self.label_manager,
-                                 properties,
-                                 save_probabilities),)
+                            convert_fn,
+                            (convert_args,)
                         )
                     )
                 if ofile is not None:
@@ -543,6 +562,8 @@ class nnUNetPredictor(object):
                 else:
                     print(f'\nDone with image of shape {data.shape}:')
             ret = [i.get()[0] for i in r]
+            if is_regression_task and not save_probabilities:
+                ret = [i[0] if isinstance(i, tuple) else i for i in ret]
 
         if isinstance(data_iterator, MultiThreadedAugmenter):
             data_iterator._finish()
@@ -575,14 +596,35 @@ class nnUNetPredictor(object):
             dct['data'],
             reconstruction_mode=reconstruction_mode,
         ).cpu()
+        is_regression_task = self._is_regression_kernel_task()
+        valid_mask_preprocessed = None
+        if is_regression_task:
+            valid_mask_preprocessed = extract_valid_mask_from_input(dct['data'], self.dataset_json)[0].cpu().numpy()
 
         if self.verbose:
             print('resampling to original shape')
         if output_file_truncated is not None:
-            export_prediction_from_logits(predicted_logits, dct['data_properties'], self.configuration_manager,
-                                          self.plans_manager, self.dataset_json, output_file_truncated,
-                                          save_or_return_probabilities)
+            if is_regression_task:
+                export_regression_prediction(predicted_logits, valid_mask_preprocessed, dct['data_properties'],
+                                             self.configuration_manager, self.plans_manager, self.dataset_json,
+                                             output_file_truncated, save_or_return_probabilities)
+            else:
+                export_prediction_from_logits(predicted_logits, dct['data_properties'], self.configuration_manager,
+                                              self.plans_manager, self.dataset_json, output_file_truncated,
+                                              save_or_return_probabilities)
         else:
+            if is_regression_task:
+                ret = convert_predicted_regression_to_original_shape(
+                    predicted_logits,
+                    valid_mask_preprocessed,
+                    self.plans_manager,
+                    self.configuration_manager,
+                    dct['data_properties'],
+                    self.dataset_json,
+                )
+                if save_or_return_probabilities:
+                    return ret[0], ret[1]
+                return ret[0]
             ret = convert_predicted_logits_to_segmentation_with_correct_shape(predicted_logits, self.plans_manager,
                                                                               self.configuration_manager,
                                                                               self.label_manager,
@@ -629,12 +671,6 @@ class nnUNetPredictor(object):
 
             if len(self.list_of_parameters) > 1:
                 prediction /= len(self.list_of_parameters)
-
-            # prediction /= n_predictions
-
-            if self._is_regression_kernel_task():
-                prediction = self._map_prediction_to_kernel_radius(prediction)
-
 
             if self.verbose: print('Prediction done')
             prediction = prediction.to('cpu')
@@ -695,11 +731,7 @@ class nnUNetPredictor(object):
         inference_device = self.device
         results_device = inference_device if results_device is None else results_device
 
-        predicted_logits = torch.zeros(
-            (self.label_manager.num_segmentation_heads, *data.shape[1:]),
-            dtype=torch.float32,
-            device=results_device,
-        )
+        predicted_logits = None
         n_predictions = torch.zeros(data.shape[1:], dtype=torch.float32, device=results_device)
         gaussian = compute_gaussian(
             tuple(self.configuration_manager.patch_size),
@@ -715,10 +747,18 @@ class nnUNetPredictor(object):
             prediction = self._internal_maybe_mirror_and_predict(workon)[0]
             if prediction.device != results_device:
                 prediction = prediction.to(results_device, non_blocking=False)
+            if predicted_logits is None:
+                predicted_logits = torch.zeros(
+                    (prediction.shape[0], *data.shape[1:]),
+                    dtype=torch.float32,
+                    device=results_device,
+                )
             predicted_logits[sl] += prediction * gaussian
             n_predictions[sl[1:]] += gaussian
             del workon, prediction
 
+        if predicted_logits is None:
+            return torch.zeros((1, *data.shape[1:]), dtype=torch.float32, device=results_device)
         if torch.any(n_predictions == 0):
             raise RuntimeError('Gaussian reconstruction produced uncovered voxels. Check sliding-window coverage.')
 
@@ -732,16 +772,20 @@ class nnUNetPredictor(object):
     def rec_mean(self, slicers, data):
         results_device = self.device
 
-        vol = torch.zeros((data.shape),dtype=torch.half)
-        n_predictions = torch.zeros(data.shape[1:], dtype=torch.half)
+        vol = None
+        n_predictions = torch.zeros(data.shape[1:], dtype=torch.float32, device=results_device)
         for sl in tqdm(slicers):
             workon = data[sl][None]
             workon = workon.to(self.device, non_blocking=False)
-            prediction = self._internal_maybe_mirror_and_predict(workon)[0].to(results_device)
-            patch = prediction.detach().cpu()[0]
+            prediction = self._internal_maybe_mirror_and_predict(workon)[0].to(results_device).float()
+            if vol is None:
+                vol = torch.zeros((prediction.shape[0], *data.shape[1:]), dtype=torch.float32, device=results_device)
+            patch = prediction
             vol[sl] += patch
             n_predictions[sl[1:]] += 1
-        vol /= n_predictions
+        if vol is None:
+            return torch.zeros((1, *data.shape[1:]), dtype=torch.float32, device=results_device)
+        vol /= torch.clamp(n_predictions, min=1).unsqueeze(0)
         return vol
 
     def rec_center(self, slicers, data, crop='auto', results_device: Optional[torch.device] = None):
@@ -907,21 +951,26 @@ class nnUNetPredictor(object):
         # TODO: Reimplement more efficiently (currently RAM-heavy, naive for-loops; constrained by max_layers)
         results_device = self.device
 
-        vol = torch.zeros((max_layers, *data.shape),dtype=torch.float32)
+        vol = None
         iii=0
         for sl in tqdm(slicers):
             workon = data[sl][None]
             workon = workon.to(self.device, non_blocking=False)
             prediction = self._internal_maybe_mirror_and_predict(workon)[0].to(results_device)
-            patch = prediction.detach().cpu()[0]
+            patch = prediction.detach().float()
+            if vol is None:
+                vol = torch.zeros((max_layers, patch.shape[0], *data.shape[1:]), dtype=torch.float32, device=results_device)
             iii+=1
             if iii==99:
-                np.save(f"{iii}.npy", patch)
+                np.save(f"{iii}.npy", patch.cpu().numpy())
             # patch+= (3*np.random.rand(*patch.shape) -1) #debug with noise
+            spatial_sl = (slice(None),) + tuple(sl[1:])
             for layer in range(max_layers):
-                if torch.sum(vol[layer][sl])==0:                
-                    vol[layer][sl] = patch
+                if torch.sum(vol[layer][spatial_sl]) == 0:
+                    vol[layer][spatial_sl] = patch
                     break
+        if vol is None:
+            return torch.zeros((1, *data.shape[1:]), dtype=torch.float32, device=results_device)
         for layer in range(max_layers): #ensure max_layers is sufficient
             if torch.sum(vol[layer])==0:
                 if layer >= max_layers-1:
@@ -929,9 +978,9 @@ class nnUNetPredictor(object):
                 print("nb layer used for rec_median : ", layer)
                 break
 
-        vol = torch.where(vol == 0, torch.tensor(float('nan')), vol)
+        vol = torch.where(vol == 0, torch.tensor(float('nan'), device=results_device), vol)
         median_vol = torch.nanmedian(vol, dim=0)
-        return median_vol[0].half()
+        return median_vol[0]
 
     def _internal_predict_sliding_window_return_logits(self,
                                                        data: torch.Tensor,

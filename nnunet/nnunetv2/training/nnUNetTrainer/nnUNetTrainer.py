@@ -25,8 +25,16 @@ from batchgenerators.utilities.file_and_folder_operations import join, load_json
 from torch._dynamo import OptimizedModule
 
 from nnunetv2.configuration import ANISO_THRESHOLD, default_num_processes
-from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder, region_or_label_to_mask
-from nnunetv2.inference.export_prediction import export_prediction_from_logits, resample_and_save
+from nnunetv2.evaluation.evaluate_predictions import (
+    compute_metrics_on_folder,
+    compute_regression_metrics_on_folder,
+    region_or_label_to_mask,
+)
+from nnunetv2.inference.export_prediction import (
+    export_prediction_from_logits,
+    export_regression_prediction,
+    resample_and_save,
+)
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from nnunetv2.inference.sliding_window_prediction import compute_gaussian
 from nnunetv2.paths import nnUNet_preprocessed, nnUNet_results
@@ -59,6 +67,11 @@ from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 from nnunetv2.utilities.helpers import empty_cache, dummy_context
 from nnunetv2.utilities.label_handling.label_handling import convert_labelmap_to_one_hot, determine_num_input_channels
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
+from nnunetv2.utilities.regression import (
+    convert_regression_logits_to_radius,
+    extract_valid_mask_from_input,
+    is_regression_dataset,
+)
 from torch import autocast, nn
 from torch import distributed as dist
 from torch.cuda import device_count
@@ -300,7 +313,7 @@ class nnUNetTrainer(object):
             arch_init_kwargs,
             arch_init_kwargs_req_import,
             num_input_channels,
-            1, #TODO:arthur - for now defined as 1 instead of num_output_channels
+            num_output_channels,
             allow_init=True,
             deep_supervision=enable_deep_supervision)
 
@@ -1138,16 +1151,16 @@ class nnUNetTrainer(object):
                 self.grad_scaler.load_state_dict(checkpoint['grad_scaler_state'])
 
     def _is_regression_kernel_task_for_inference(self) -> bool:
-        if isinstance(self.dataset_json, dict) and self.dataset_json.get('regression_task', False):
+        if is_regression_dataset(self.dataset_json):
             return True
-        if isinstance(self.dataset_json, dict) and (
-            ('kernel_radius_min' in self.dataset_json) or ('kernel_radius_max' in self.dataset_json)
-        ):
+        trainer_name = self.__class__.__name__.lower()
+        if 'regfix' in trainer_name or 'regressionbase' in trainer_name:
             return True
-        return 'MRCT' in self.__class__.__name__
+        return False
 
     def _compute_center_crop_search_score(self, prediction: torch.Tensor, seg: np.ndarray,
-                                          is_regression_task: bool) -> float:
+                                          is_regression_task: bool,
+                                          valid_mask: Optional[np.ndarray] = None) -> float:
         if isinstance(prediction, torch.Tensor):
             prediction = prediction.detach()
 
@@ -1157,13 +1170,13 @@ class nnUNetTrainer(object):
             seg_ref = seg
 
         if is_regression_task:
-            pred_map = prediction[0].float().cpu().numpy()
+            pred_map = convert_regression_logits_to_radius(prediction, self.dataset_json)[0].float().cpu().numpy()
             seg_ref = np.asarray(seg_ref, dtype=np.float32)
-            valid_mask = np.ones_like(seg_ref, dtype=bool)
-            if self.label_manager.ignore_label is not None:
-                valid_mask &= (seg_ref != self.label_manager.ignore_label)
+            if valid_mask is None:
+                raise ValueError('Regression center-crop search requires an explicit valid_mask')
+            valid_mask = np.asarray(valid_mask, dtype=bool)
             if not np.any(valid_mask):
-                return 0.0
+                raise ValueError('Regression center-crop search received an empty valid_mask')
             mae = np.mean(np.abs(pred_map[valid_mask] - seg_ref[valid_mask]))
             return -float(mae)
 
@@ -1202,13 +1215,13 @@ class nnUNetTrainer(object):
     def _search_best_center_crop_ratio(self, predictor: nnUNetPredictor, val_keys: List[str]) -> Tuple[float, dict]:
         if len(val_keys) == 0:
             return float(predictor.center_crop_ratio), {
-                'metric_name': 'Dice',
+                'metric_name': 'neg_masked_MAE' if self._is_regression_kernel_task_for_inference() else 'Dice',
                 'candidate_scores': {},
                 'num_subset_cases': 0
             }
 
         is_regression_task = self._is_regression_kernel_task_for_inference()
-        metric_name = 'neg_MAE' if is_regression_task else 'Dice'
+        metric_name = 'neg_masked_MAE' if is_regression_task else 'Dice'
         subset_size = min(int(self.center_crop_ratio_subset_size), len(val_keys))
         subset_keys = sorted(val_keys)[:subset_size]
 
@@ -1217,9 +1230,11 @@ class nnUNetTrainer(object):
                                            num_images_properties_loading_threshold=0)
 
         candidate_scores = {}
+        skipped_cases_no_valid_mask = {}
         for ratio in self.center_crop_ratio_candidates:
             predictor.set_center_crop_ratio(float(ratio), source='validation_auto_search')
             case_scores = []
+            skipped_here = []
             for k in subset_keys:
                 data, seg, _ = dataset_val_subset.load_case(k)
                 if self.is_cascaded:
@@ -1233,22 +1248,40 @@ class nnUNetTrainer(object):
                     data_tensor,
                     reconstruction_mode=self.center_crop_ratio_reconstruction_mode
                 )
-                score = self._compute_center_crop_search_score(prediction, seg, is_regression_task)
+                valid_mask = None
+                if is_regression_task:
+                    valid_mask = extract_valid_mask_from_input(data_tensor, self.dataset_json)[0, 0].cpu().numpy()
+                    if not np.any(valid_mask):
+                        skipped_here.append(k)
+                        continue
+                score = self._compute_center_crop_search_score(prediction, seg, is_regression_task, valid_mask=valid_mask)
                 case_scores.append(score)
 
-            candidate_score = float(np.mean(case_scores)) if len(case_scores) > 0 else float('-inf')
+            if len(case_scores) == 0:
+                raise RuntimeError(
+                    f'All center-crop search cases were skipped because they had no valid mask for ratio={float(ratio):.6f}'
+                )
+
+            candidate_score = float(np.mean(case_scores))
             candidate_scores[str(float(ratio))] = candidate_score
+            skipped_cases_no_valid_mask[str(float(ratio))] = skipped_here
             self.print_to_log_file(
                 f'center-crop search ratio={float(ratio):.6f}, metric({metric_name})={candidate_score:.6f}',
                 also_print_to_console=True
             )
+            if skipped_here:
+                self.print_to_log_file(
+                    f'center-crop search skipped_cases_no_valid_mask={skipped_here}',
+                    also_print_to_console=True,
+                )
 
         best_ratio = max(self.center_crop_ratio_candidates, key=lambda x: candidate_scores[str(float(x))])
         report = {
             'metric_name': metric_name,
             'candidate_scores': candidate_scores,
             'num_subset_cases': len(subset_keys),
-            'subset_keys': subset_keys
+            'subset_keys': subset_keys,
+            'skipped_cases_no_valid_mask': skipped_cases_no_valid_mask,
         }
         return float(best_ratio), report
 
@@ -1308,6 +1341,7 @@ class nnUNetTrainer(object):
     def perform_actual_validation(self, save_probabilities: bool = False):
         self.set_deep_supervision_enabled(False)
         self.network.eval()
+        is_regression_task = self._is_regression_kernel_task_for_inference()
 
         if self.is_ddp and self.batch_size == 1 and self.enable_deep_supervision and self._do_i_compile():
             self.print_to_log_file("WARNING! batch size is 1 during training and torch.compile is enabled. If you "
@@ -1348,7 +1382,7 @@ class nnUNetTrainer(object):
                         also_print_to_console=True
                     )
                     search_report = {
-                        'metric_name': 'Dice',
+                        'metric_name': 'neg_masked_MAE' if is_regression_task else 'Dice',
                         'candidate_scores': {},
                         'num_subset_cases': 0
                     }
@@ -1421,14 +1455,36 @@ class nnUNetTrainer(object):
                     reconstruction_mode=validation_reconstruction_mode
                 )
                 prediction = prediction.cpu()
+                valid_mask_preprocessed = None
+                export_fn = export_prediction_from_logits
+                export_args = (
+                    prediction,
+                    properties,
+                    self.configuration_manager,
+                    self.plans_manager,
+                    self.dataset_json,
+                    output_filename_truncated,
+                    save_probabilities,
+                )
+                if is_regression_task:
+                    valid_mask_preprocessed = extract_valid_mask_from_input(data, self.dataset_json)[0].cpu().numpy()
+                    export_fn = export_regression_prediction
+                    export_args = (
+                        prediction,
+                        valid_mask_preprocessed,
+                        properties,
+                        self.configuration_manager,
+                        self.plans_manager,
+                        self.dataset_json,
+                        output_filename_truncated,
+                        save_probabilities,
+                    )
 
                 # this needs to go into background processes
                 results.append(
                     segmentation_export_pool.starmap_async(
-                        export_prediction_from_logits, (
-                            (prediction, properties, self.configuration_manager, self.plans_manager,
-                             self.dataset_json, output_filename_truncated, save_probabilities),
-                        )
+                        export_fn,
+                        (export_args,)
                     )
                 )
                 # for debug purposes
@@ -1477,22 +1533,77 @@ class nnUNetTrainer(object):
             dist.barrier()
 
         if self.local_rank == 0:
-            metrics = compute_metrics_on_folder(join(self.preprocessed_dataset_folder_base, 'gt_segmentations'),
-                                                validation_output_folder,
-                                                join(validation_output_folder, 'summary.json'),
-                                                self.plans_manager.image_reader_writer_class(),
-                                                self.dataset_json["file_ending"],
-                                                self.label_manager.foreground_regions if self.label_manager.has_regions else
-                                                self.label_manager.foreground_labels,
-                                                self.label_manager.ignore_label, chill=True,
-                                                num_processes=default_num_processes * dist.get_world_size() if
-                                                self.is_ddp else default_num_processes)
-            print("all metrics : ", metrics) #arthur
+            eval_num_processes = default_num_processes * dist.get_world_size() if self.is_ddp else default_num_processes
+            gt_folder = join(self.preprocessed_dataset_folder_base, 'gt_segmentations')
+            if is_regression_task:
+                metrics = compute_regression_metrics_on_folder(
+                    gt_folder,
+                    validation_output_folder,
+                    join(validation_output_folder, 'summary.json'),
+                    self.plans_manager.image_reader_writer_class(),
+                    self.dataset_json["file_ending"],
+                    num_processes=eval_num_processes,
+                )
+                self.print_to_log_file(
+                    f"expected_cases={metrics['case_counts']['expected_cases']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"predicted_cases={metrics['case_counts']['predicted_cases']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"missing_cases={metrics['case_counts']['missing_cases']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"unexpected_cases={metrics['case_counts']['unexpected_cases']}",
+                    also_print_to_console=True,
+                )
+            else:
+                metrics = compute_metrics_on_folder(
+                    gt_folder,
+                    validation_output_folder,
+                    join(validation_output_folder, 'summary.json'),
+                    self.plans_manager.image_reader_writer_class(),
+                    self.dataset_json["file_ending"],
+                    self.label_manager.foreground_regions if self.label_manager.has_regions else
+                    self.label_manager.foreground_labels,
+                    self.label_manager.ignore_label,
+                    chill=True,
+                    num_processes=eval_num_processes,
+                )
             self.print_to_log_file("Validation complete", also_print_to_console=True)
-            self.print_to_log_file("Mean Validation Dice: ", (metrics['foreground_mean']["Dice"]),
-                                   also_print_to_console=True)
+            if is_regression_task:
+                self.print_to_log_file(
+                    f"Mean Validation MAE: {metrics['foreground_mean']['MAE']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"Mean Validation RMSE: {metrics['foreground_mean']['RMSE']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"Global Validation RMSE: {metrics['foreground_mean']['Global_RMSE']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"Acc±1: {metrics['foreground_mean']['Acc_1']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"Acc±3: {metrics['foreground_mean']['Acc_3']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"Acc±5: {metrics['foreground_mean']['Acc_5']}",
+                    also_print_to_console=True,
+                )
+            else:
+                self.print_to_log_file("Mean Validation Dice: ", (metrics['foreground_mean']["Dice"]),
+                                       also_print_to_console=True)
 
-        self.set_deep_supervision_enabled(True)
+        self.set_deep_supervision_enabled(self.enable_deep_supervision)
         compute_gaussian.cache_clear()
 
     def run_training(self):

@@ -4,9 +4,10 @@ from typing import Union, List, Tuple
 from batchgenerators.utilities.file_and_folder_operations import load_json, join, isdir, maybe_mkdir_p, subfiles, isfile
 
 from nnunetv2.configuration import default_num_processes
-from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder
+from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder, compute_regression_metrics_on_folder
 from nnunetv2.paths import nnUNet_raw, nnUNet_preprocessed
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
+from nnunetv2.utilities.regression import is_regression_dataset
 
 
 def accumulate_cv_results(trained_model_folder,
@@ -43,16 +44,26 @@ def accumulate_cv_results(trained_model_folder,
                 did_we_copy_something = True
 
     if did_we_copy_something or not isfile(join(merged_output_folder, 'summary.json')):
-        label_manager = plans_manager.get_label_manager(dataset_json)
         gt_folder = join(nnUNet_raw, plans_manager.dataset_name, 'labelsTr')
         if not isdir(gt_folder):
             gt_folder = join(nnUNet_preprocessed, plans_manager.dataset_name, 'gt_segmentations')
-        compute_metrics_on_folder(gt_folder,
-                                  merged_output_folder,
-                                  join(merged_output_folder, 'summary.json'),
-                                  rw,
-                                  dataset_json['file_ending'],
-                                  label_manager.foreground_regions if label_manager.has_regions else
-                                  label_manager.foreground_labels,
-                                  label_manager.ignore_label,
-                                  num_processes)
+        if is_regression_dataset(dataset_json):
+            compute_regression_metrics_on_folder(
+                gt_folder,
+                merged_output_folder,
+                join(merged_output_folder, 'summary.json'),
+                rw,
+                dataset_json['file_ending'],
+                num_processes,
+            )
+        else:
+            label_manager = plans_manager.get_label_manager(dataset_json)
+            compute_metrics_on_folder(gt_folder,
+                                      merged_output_folder,
+                                      join(merged_output_folder, 'summary.json'),
+                                      rw,
+                                      dataset_json['file_ending'],
+                                      label_manager.foreground_regions if label_manager.has_regions else
+                                      label_manager.foreground_labels,
+                                      label_manager.ignore_label,
+                                      num_processes)
