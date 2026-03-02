@@ -2,12 +2,12 @@
 #$ -S /bin/bash
 #$ -N nngred
 #$ -l h_rt=46:59:00
-#$ -l mem=16G
+#$ -l mem=5G
 #$ -l tmpfs=40G
 #$ -pe smp 8
 #$ -l gpu=1
 #$ -t 1-5
-#$ -tc 2
+#$ -tc 5
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -j y
