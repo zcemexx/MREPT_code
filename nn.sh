@@ -11,6 +11,8 @@
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -j y
+#$ -m abe
+#$ -M zcemexx@ucl.ac.uk
 
 set -euo pipefail
 
