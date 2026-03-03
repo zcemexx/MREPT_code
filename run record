@@ -181,6 +181,11 @@ cd /Users/apple/Documents/MREPT_code/nnunet
 python -m pip install -U pip setuptools wheel
 python -m pip install -e .
 
+ 570325 2.48418 eptSweep   zcemexx      r     03/01/2026 22:32:59 Bran@node-d00a-141.myriad.ucl.    16 1
+ 570325 2.48418 eptSweep   zcemexx      r     03/01/2026 23:07:05 Bran@node-t00a-006.myriad.ucl.    16 2
+ 570325 2.48418 eptSweep   zcemexx      r     03/02/2026 01:01:55 Bran@node-d00a-159.myriad.ucl.    16 3
+ 570325 0.00000 eptSweep   zcemexx      hqw   03/01/2026 20:43:01                   
+
 
 
 ## 深度学习 P-EPT 半径图 (Radius Map) 评估脚本撰写计划
@@ -190,7 +195,7 @@ python -m pip install -e .
 **目标**：为后续计算准备好对齐的数据矩阵和掩膜 (Masks)。
 
 -   **输入加载**：读取模型预测的半径图 Rpred​ 和穷举法生成的 Ground Truth 半径图 Rgt​。
--   **掩膜加载**：读取利用 FreeSurfer 或 FSL 提取的组织掩膜 ，包括全脑 (Whole Brain)、白质 (WM)、灰质 (GM) 和脑脊液 (CSF)。
+-   **掩膜加载**：读取组织掩膜 ，包括全脑 (Whole Brain)、白质 (WM)、灰质 (GM) 和脑脊液 (CSF)。
     
 -   **预处理**：计算全局绝对误差矩阵 Eabs​\=∣Rpred​−Rgt​∣ 和符号残差矩阵 Eres​\=Rpred​−Rgt​，作为后续统计的基础变量。
 
@@ -290,27 +295,5 @@ python -m pip install -e .
 然后在 export_prediction.py 到 export_prediction.py，又把整张图 clip 到 [kmin, kmax]。
 
 使用了新的trainer
- 
-审核这套对我的repo中的nnunet的修改方案
-https://github.com/zcemexx/MREPT_code.git
 
- 1. 禁止使用所有训练增强以及deep supervision，确保训练目标纯粹是单通道回归。
 
- 2. 回归导出函数的数据穿透（接口签名问题）
-你计划在导出顺序中“将预测和 valid mask 一起还原到原始空间”。
-
-隐藏陷阱：nnU-Net 原生的 export_prediction_from_logits 是作为一个独立的后台进程（Background Worker）运行的，它的参数签名中默认只接收网络输出的 prediction 数组和 properties 字典，根本拿不到原始的 data 输入，因此在 worker 内部是无法直接获取 valid_mask 的。
-
-修正建议：在 predict_from_raw_data.py 的推理循环中，当调用 export_pool.starmap_async 时，必须修改参数列表，把提取好的 valid_mask_preprocessed（即 data[1]）作为额外的参数，显式传递给你的新函数 export_regression_prediction(...)。
-
-3. 反归一化 (Un-normalization) 的显式声明
-方案 4.3 提到了：“在 valid_mask == 1 内：round, clip 到 [1, 30]”。
-
-隐藏陷阱：sigmoid 输出的值域是 [0, 1]。在 round 和 clip 之前，必须进行显式的数学反归一化。
-
-修正建议：在你的 convert_predicted_regression_to_original_shape 函数中，必须先执行反归一化，例如 pred = pred * (30 - 1) + 1（如果你的 normalize_radius 是 min-max 归一化），然后再执行 round 和 clip。建议将这段逻辑与 dataset.json 中的 kernel_radius_min 和 kernel_radius_max 绑定，避免硬编码。
-
-4. JSON 元数据的索引一致性 (0-based vs 1-based)
-隐藏陷阱：你在 MATLAB 生成脚本中计划写入 "mask_channel_index": 1。Python 是 0-based 索引（0 代表幅度/相位，1 代表 Mask），而 MATLAB 是 1-based 索引。
-
-修正建议：务必在 MATLAB 脚本 generate_dataset_json.m 的注释中明确说明，写入的 1 是指代 Python 的第 2 个通道。在 Python 端读取时直接使用 idx = dataset_json['mask_channel_index'] 然后取 data[:, idx:idx+1]，确保不会因为语言习惯引起通道错位。

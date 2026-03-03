@@ -99,6 +99,33 @@ def maybe_load_checkpoint(nnunet_trainer: nnUNetTrainer, continue_training: bool
         nnunet_trainer.load_checkpoint(expected_checkpoint_file)
 
 
+def configure_early_stopping_from_args(
+    nnunet_trainer: nnUNetTrainer,
+    enabled: bool,
+    patience: int,
+    min_epochs: int,
+    min_delta: float,
+    delta_mode: str,
+    monitor: str,
+    mode: str,
+    continue_training: bool,
+    validation_only: bool,
+):
+    should_apply_cli_config = (
+        not continue_training and not validation_only
+    ) or not nnunet_trainer._loaded_early_stopping_from_checkpoint
+    if should_apply_cli_config:
+        nnunet_trainer.configure_early_stopping(
+            enabled=enabled,
+            patience=patience,
+            min_epochs=min_epochs,
+            min_delta=min_delta,
+            delta_mode=delta_mode,
+            monitor=monitor,
+            mode=mode,
+        )
+
+
 def setup_ddp(rank, world_size):
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -109,7 +136,8 @@ def cleanup_ddp():
 
 
 def run_ddp(rank, dataset_name_or_id, configuration, fold, tr, p, use_compressed, disable_checkpointing, c, val,
-            pretrained_weights, npz, val_with_best, world_size):
+            pretrained_weights, npz, val_with_best, world_size, early_stopping, es_patience, es_min_epochs,
+            es_min_delta, es_delta_mode, es_monitor, es_mode):
     setup_ddp(rank, world_size)
     torch.cuda.set_device(torch.device('cuda', dist.get_rank()))
 
@@ -122,6 +150,18 @@ def run_ddp(rank, dataset_name_or_id, configuration, fold, tr, p, use_compressed
     assert not (c and val), f'Cannot set --c and --val flag at the same time. Dummy.'
 
     maybe_load_checkpoint(nnunet_trainer, c, val, pretrained_weights)
+    configure_early_stopping_from_args(
+        nnunet_trainer,
+        enabled=early_stopping,
+        patience=es_patience,
+        min_epochs=es_min_epochs,
+        min_delta=es_min_delta,
+        delta_mode=es_delta_mode,
+        monitor=es_monitor,
+        mode=es_mode,
+        continue_training=c,
+        validation_only=val,
+    )
 
     if torch.cuda.is_available():
         cudnn.deterministic = False
@@ -181,6 +221,13 @@ def run_training(dataset_name_or_id: Union[str, int],
                  only_run_validation: bool = False,
                  disable_checkpointing: bool = False,
                  val_with_best: bool = False,
+                 early_stopping: bool = False,
+                 es_patience: int = 60,
+                 es_min_epochs: int = 150,
+                 es_min_delta: float = 0.001,
+                 es_delta_mode: str = 'rel',
+                 es_monitor: str = 'auto',
+                 es_mode: str = 'auto',
                  device: torch.device = torch.device('cuda')):
     if isinstance(fold, str):
         if fold != 'all':
@@ -216,7 +263,14 @@ def run_training(dataset_name_or_id: Union[str, int],
                      pretrained_weights,
                      export_validation_probabilities,
                      val_with_best,
-                     num_gpus),
+                     num_gpus,
+                     early_stopping,
+                     es_patience,
+                     es_min_epochs,
+                     es_min_delta,
+                     es_delta_mode,
+                     es_monitor,
+                     es_mode),
                  nprocs=num_gpus,
                  join=True)
     else:
@@ -229,6 +283,18 @@ def run_training(dataset_name_or_id: Union[str, int],
         assert not (continue_training and only_run_validation), f'Cannot set --c and --val flag at the same time. Dummy.'
 
         maybe_load_checkpoint(nnunet_trainer, continue_training, only_run_validation, pretrained_weights)
+        configure_early_stopping_from_args(
+            nnunet_trainer,
+            enabled=early_stopping,
+            patience=es_patience,
+            min_epochs=es_min_epochs,
+            min_delta=es_min_delta,
+            delta_mode=es_delta_mode,
+            monitor=es_monitor,
+            mode=es_mode,
+            continue_training=continue_training,
+            validation_only=only_run_validation,
+        )
 
         if torch.cuda.is_available():
             cudnn.deterministic = False
@@ -279,6 +345,22 @@ def run_training_entry():
     parser.add_argument('--disable_checkpointing', action='store_true', required=False,
                         help='[OPTIONAL] Set this flag to disable checkpointing. Ideal for testing things out and '
                              'you dont want to flood your hard drive with checkpoints.')
+    parser.add_argument('--early_stopping', action='store_true', required=False,
+                        help='[OPTIONAL] Enable early stopping.')
+    parser.add_argument('--es_patience', type=int, default=60, required=False,
+                        help='[OPTIONAL] Number of consecutive epochs without sufficient improvement before stopping.')
+    parser.add_argument('--es_min_epochs', type=int, default=150, required=False,
+                        help='[OPTIONAL] Minimum number of completed epochs before early stopping is evaluated.')
+    parser.add_argument('--es_min_delta', type=float, default=0.001, required=False,
+                        help='[OPTIONAL] Minimum improvement threshold for early stopping.')
+    parser.add_argument('--es_delta_mode', type=str, default='rel', choices=('rel', 'abs'), required=False,
+                        help='[OPTIONAL] Interpret es_min_delta as a relative or absolute threshold.')
+    parser.add_argument('--es_monitor', type=str, default='auto',
+                        choices=('auto', 'val_losses', 'ema_fg_dice', 'mean_fg_dice', 'online_masked_mae'),
+                        required=False,
+                        help='[OPTIONAL] Metric to monitor for early stopping.')
+    parser.add_argument('--es_mode', type=str, default='auto', choices=('auto', 'min', 'max'), required=False,
+                        help='[OPTIONAL] Optimization direction for the early stopping monitor.')
     parser.add_argument('-device', type=str, default='cuda', required=False,
                     help="Use this to set the device the training should run with. Available options are 'cuda' "
                          "(GPU), 'cpu' (CPU) and 'mps' (Apple M1/M2). Do NOT use this to set which GPU ID! "
@@ -301,7 +383,8 @@ def run_training_entry():
 
     run_training(args.dataset_name_or_id, args.configuration, args.fold, args.tr, args.p, args.pretrained_weights,
                  args.num_gpus, args.use_compressed, args.npz, args.c, args.val, args.disable_checkpointing, args.val_best,
-                 device=device)
+                 args.early_stopping, args.es_patience, args.es_min_epochs, args.es_min_delta, args.es_delta_mode,
+                 args.es_monitor, args.es_mode, device=device)
 
 def run_unpacking_entry():
     import argparse

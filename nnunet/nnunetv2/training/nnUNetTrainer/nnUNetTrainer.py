@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import warnings
+from dataclasses import asdict, dataclass, fields
 from copy import deepcopy
 from datetime import datetime
 from time import time, sleep
@@ -77,6 +78,21 @@ from torch import distributed as dist
 from torch.cuda import device_count
 from torch.amp import GradScaler
 from torch.nn.parallel import DistributedDataParallel as DDP
+
+
+@dataclass
+class EarlyStoppingState:
+    enabled: bool = False
+    patience: int = 60
+    min_epochs: int = 150
+    min_delta: float = 0.001
+    delta_mode: str = "rel"
+    monitor: str = "auto"
+    mode: str = "auto"
+    best_metric: Optional[float] = None
+    bad_epochs: int = 0
+    triggered: bool = False
+    reason: str = ""
 
 
 class nnUNetTrainer(object):
@@ -189,6 +205,9 @@ class nnUNetTrainer(object):
 
         ### initializing stuff for remembering things and such
         self._best_ema = None
+        self.early_stopping = EarlyStoppingState()
+        self._stop_training = False
+        self._loaded_early_stopping_from_checkpoint = False
 
         ### inference things
         self.inference_allowed_mirroring_axes = None  # this variable is set in
@@ -246,6 +265,165 @@ class nnUNetTrainer(object):
 
     def _do_i_compile(self):
         return ('nnUNet_compile' in os.environ.keys()) and (os.environ['nnUNet_compile'].lower() in ('true', '1', 't'))
+
+    def configure_early_stopping(
+        self,
+        enabled: bool,
+        patience: int = 60,
+        min_epochs: int = 150,
+        min_delta: float = 0.001,
+        delta_mode: str = "rel",
+        monitor: str = "auto",
+        mode: str = "auto",
+    ) -> None:
+        if patience < 1:
+            raise ValueError("Early stopping patience must be >= 1")
+        if min_epochs < 0:
+            raise ValueError("Early stopping min_epochs must be >= 0")
+        if min_delta < 0:
+            raise ValueError("Early stopping min_delta must be >= 0")
+        if delta_mode not in {"rel", "abs"}:
+            raise ValueError("Early stopping delta_mode must be one of {'rel', 'abs'}")
+        if mode not in {"auto", "min", "max"}:
+            raise ValueError("Early stopping mode must be one of {'auto', 'min', 'max'}")
+
+        self.early_stopping.enabled = enabled
+        self.early_stopping.patience = patience
+        self.early_stopping.min_epochs = min_epochs
+        self.early_stopping.min_delta = float(min_delta)
+        self.early_stopping.delta_mode = delta_mode
+        self.early_stopping.monitor = monitor
+        self.early_stopping.mode = mode
+        self.early_stopping.triggered = False
+        self.early_stopping.reason = ""
+        if not enabled:
+            self.early_stopping.best_metric = None
+            self.early_stopping.bad_epochs = 0
+            self._stop_training = False
+
+    def _get_default_monitor_for_early_stopping(self) -> Tuple[str, str, str]:
+        return "ema_fg_dice", "max", "EMA pseudo Dice"
+
+    def _resolve_early_stopping_monitor(self) -> Tuple[str, str, str]:
+        key, default_mode, display_name = self._get_default_monitor_for_early_stopping()
+
+        if self.early_stopping.monitor != "auto":
+            key = self.early_stopping.monitor
+            display_name = self.early_stopping.monitor
+
+        mode = default_mode if self.early_stopping.mode == "auto" else self.early_stopping.mode
+        return key, mode, display_name
+
+    def _get_default_monitor_for_best_checkpoint(self) -> Tuple[str, str, str]:
+        return self._get_default_monitor_for_early_stopping()
+
+    def _get_current_monitored_value(self, key: str) -> float:
+        values = self.logger.my_fantastic_logging.get(key)
+        if values is None:
+            raise RuntimeError(f"Early stopping monitor '{key}' is not present in logger state")
+        if len(values) == 0:
+            raise RuntimeError(f"Early stopping monitor '{key}' has no logged values yet")
+
+        current = values[-1]
+        if not np.isscalar(current):
+            raise RuntimeError(f"Early stopping monitor '{key}' must be scalar, got {type(current).__name__}")
+        current = float(current)
+        if not np.isfinite(current):
+            raise RuntimeError(f"Early stopping monitor '{key}' must be finite, got {current}")
+        return current
+
+    @staticmethod
+    def _is_monitor_improved(current: float, best: float, mode: str, min_delta: float, delta_mode: str) -> bool:
+        if delta_mode == "rel" and best > 0:
+            threshold = best * (1.0 - min_delta) if mode == "min" else best * (1.0 + min_delta)
+            return current < threshold if mode == "min" else current > threshold
+
+        threshold = best - min_delta if mode == "min" else best + min_delta
+        return current < threshold if mode == "min" else current > threshold
+
+    def _should_evaluate_early_stopping(self) -> bool:
+        if not self.early_stopping.enabled:
+            return False
+        completed_epochs = self.current_epoch + 1
+        return completed_epochs >= self.early_stopping.min_epochs
+
+    def _maybe_save_periodic_checkpoint(self) -> None:
+        current_epoch = self.current_epoch
+        if (current_epoch + 1) % self.save_every == 0 and current_epoch != (self.num_epochs - 1):
+            self.save_checkpoint(join(self.output_folder, 'checkpoint_latest.pth'))
+
+    def _maybe_save_best_checkpoint(self) -> None:
+        key, mode, display_name = self._get_default_monitor_for_best_checkpoint()
+        current = self._get_current_monitored_value(key)
+
+        if self._best_ema is None:
+            improved = True
+        elif mode == "min":
+            improved = current < self._best_ema
+        else:
+            improved = current > self._best_ema
+
+        if improved:
+            self._best_ema = current
+            self.print_to_log_file(f"New best {display_name}: {np.round(self._best_ema, decimals=4)}")
+            self.save_checkpoint(join(self.output_folder, 'checkpoint_best.pth'))
+
+    def _update_early_stopping_state(self) -> None:
+        if not self.early_stopping.enabled:
+            return
+
+        self.early_stopping.triggered = False
+        self.early_stopping.reason = ""
+        key, mode, display_name = self._resolve_early_stopping_monitor()
+        completed_epochs = self.current_epoch + 1
+        if not self._should_evaluate_early_stopping():
+            self.print_to_log_file(
+                f"Early stopping waiting: completed_epochs={completed_epochs}, min_epochs={self.early_stopping.min_epochs}"
+            )
+            return
+
+        current = self._get_current_monitored_value(key)
+        best = self.early_stopping.best_metric
+        if best is None:
+            self.early_stopping.best_metric = current
+            self.early_stopping.bad_epochs = 0
+            self.print_to_log_file(
+                f"Early stopping init: monitor={display_name}, current={current:.6f}, patience={self.early_stopping.patience}, "
+                f"bad_epochs=0, min_epochs={self.early_stopping.min_epochs}, min_delta={self.early_stopping.min_delta}, "
+                f"delta_mode={self.early_stopping.delta_mode}"
+            )
+            return
+
+        improved = self._is_monitor_improved(
+            current,
+            best,
+            mode,
+            self.early_stopping.min_delta,
+            self.early_stopping.delta_mode,
+        )
+
+        if improved:
+            self.early_stopping.best_metric = current
+            self.early_stopping.bad_epochs = 0
+        else:
+            self.early_stopping.bad_epochs += 1
+
+        self.print_to_log_file(
+            f"Early stopping: monitor={display_name}, current={current:.6f}, best={self.early_stopping.best_metric:.6f}, "
+            f"patience={self.early_stopping.patience}, bad_epochs={self.early_stopping.bad_epochs}, "
+            f"min_epochs={self.early_stopping.min_epochs}, min_delta={self.early_stopping.min_delta}, "
+            f"delta_mode={self.early_stopping.delta_mode}"
+        )
+
+        if self.early_stopping.bad_epochs >= self.early_stopping.patience:
+            self.early_stopping.triggered = True
+            self.early_stopping.reason = (
+                f"Early stopping triggered after {completed_epochs} completed epochs: monitor={display_name}, "
+                f"current={current:.6f}, best={self.early_stopping.best_metric:.6f}, "
+                f"bad_epochs={self.early_stopping.bad_epochs}, patience={self.early_stopping.patience}, "
+                f"min_delta={self.early_stopping.min_delta}, delta_mode={self.early_stopping.delta_mode}"
+            )
+            self._stop_training = True
 
     def _save_debug_information(self):
         # saving some debug information
@@ -1071,16 +1249,9 @@ class nnUNetTrainer(object):
         self.print_to_log_file(
             f"Epoch time: {np.round(self.logger.my_fantastic_logging['epoch_end_timestamps'][-1] - self.logger.my_fantastic_logging['epoch_start_timestamps'][-1], decimals=2)} s")
 
-        # handling periodic checkpointing
-        current_epoch = self.current_epoch
-        if (current_epoch + 1) % self.save_every == 0 and current_epoch != (self.num_epochs - 1):
-            self.save_checkpoint(join(self.output_folder, 'checkpoint_latest.pth'))
-
-        # handle 'best' checkpointing. ema_fg_dice is computed by the logger and can be accessed like this
-        if self._best_ema is None or self.logger.my_fantastic_logging['ema_fg_dice'][-1] > self._best_ema:
-            self._best_ema = self.logger.my_fantastic_logging['ema_fg_dice'][-1]
-            self.print_to_log_file(f"Yayy! New best EMA pseudo Dice: {np.round(self._best_ema, decimals=4)}")
-            self.save_checkpoint(join(self.output_folder, 'checkpoint_best.pth'))
+        self._maybe_save_periodic_checkpoint()
+        self._maybe_save_best_checkpoint()
+        self._update_early_stopping_state()
 
         if self.local_rank == 0:
             self.logger.plot_progress_png(self.output_folder)
@@ -1103,6 +1274,7 @@ class nnUNetTrainer(object):
                     'grad_scaler_state': self.grad_scaler.state_dict() if self.grad_scaler is not None else None,
                     'logging': self.logger.get_checkpoint(),
                     '_best_ema': self._best_ema,
+                    'early_stopping': asdict(self.early_stopping),
                     'current_epoch': self.current_epoch + 1,
                     'init_args': self.my_init_kwargs,
                     'trainer_name': self.__class__.__name__,
@@ -1118,6 +1290,8 @@ class nnUNetTrainer(object):
 
         if isinstance(filename_or_checkpoint, str):
             checkpoint = torch.load(filename_or_checkpoint, map_location=self.device, weights_only=False)
+        else:
+            checkpoint = filename_or_checkpoint
         # if state dict comes from nn.DataParallel but we use non-parallel model here then the state dict keys do not
         # match. Use heuristic to make it match
         new_state_dict = {}
@@ -1131,6 +1305,20 @@ class nnUNetTrainer(object):
         self.current_epoch = checkpoint['current_epoch']
         self.logger.load_checkpoint(checkpoint['logging'])
         self._best_ema = checkpoint['_best_ema']
+        if 'early_stopping' in checkpoint:
+            loaded_es = checkpoint['early_stopping']
+            valid_fields = {f.name for f in fields(EarlyStoppingState)}
+            merged_state = asdict(self.early_stopping)
+            for key, value in loaded_es.items():
+                if key in valid_fields:
+                    merged_state[key] = value
+            self.early_stopping = EarlyStoppingState(**merged_state)
+            self._loaded_early_stopping_from_checkpoint = True
+            self._stop_training = self.early_stopping.triggered
+        else:
+            self.early_stopping = EarlyStoppingState()
+            self._loaded_early_stopping_from_checkpoint = False
+            self._stop_training = False
         self.inference_allowed_mirroring_axes = checkpoint[
             'inference_allowed_mirroring_axes'] if 'inference_allowed_mirroring_axes' in checkpoint.keys() else self.inference_allowed_mirroring_axes
 
@@ -1608,6 +1796,7 @@ class nnUNetTrainer(object):
 
     def run_training(self):
         self.on_train_start()
+        self._stop_training = False
 
         for epoch in range(self.current_epoch, self.num_epochs):
             self.on_epoch_start()
@@ -1626,5 +1815,8 @@ class nnUNetTrainer(object):
                 self.on_validation_epoch_end(val_outputs)
 
             self.on_epoch_end()
+            if self._stop_training:
+                self.print_to_log_file(self.early_stopping.reason or "Early stopping triggered")
+                break
 
         self.on_train_end()

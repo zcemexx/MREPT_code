@@ -6,6 +6,7 @@
 *.code-workspace
 
 # 忽略文件夹
+sweep_plots/
 data/
 logs/
 __pycache__/

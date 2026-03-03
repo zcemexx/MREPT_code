@@ -40,6 +40,17 @@ export nnUNet_results="/data/nnUNet/results"
 ```bash
 nnUNetv2_train DatasetY 3d_fullres 0 -tr nnUNetTrainerMRCT_mae -pl nnResUNetPlans [optional: -pretrained_weights PATH_TO_CHECKPOINT]
 ```
+Early stopping is optional and disabled by default. To enable it with the new burn-in and relative threshold defaults:
+```bash
+nnUNetv2_train DatasetY 3d_fullres 0 -tr nnUNetTrainerMRCT_mae_grad_regfix -p nnResUNetPlans \
+  --early_stopping --es_patience 60 --es_min_epochs 150 --es_min_delta 0.001 --es_delta_mode rel
+```
+Notes:
+- Segmentation trainers monitor `ema_fg_dice` in `max` mode by default.
+- Regression trainers monitor `val_losses` in `min` mode by default.
+- `--es_min_delta 0.001 --es_delta_mode rel` means the monitored metric must improve by at least `0.1%`.
+- `--c` resumes the saved early stopping state from new checkpoints.
+
 Several trainers are available :
 - L1 loss ([MRCT_mae](https://github.com/Phyrise/nnUNet_translation/blob/master/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_mae.py))
 - Anatomical Feature-Prioritized loss ([MRCT_AFP](https://github.com/Phyrise/nnUNet_translation/blob/master/nnunetv2/training/nnUNetTrainer/variants/network_architecture/nnUNetTrainerMRCT_AFP.py)). Useful to compare features from a pre-trained segmentation network.

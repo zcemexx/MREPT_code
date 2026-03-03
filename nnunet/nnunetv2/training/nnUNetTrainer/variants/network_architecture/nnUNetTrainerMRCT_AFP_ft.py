@@ -36,6 +36,12 @@ class nnUNetTrainerMRCT_AFP_ft(nnUNetTrainer):
         self.AFP_loss = AFP(net = "TotalSeg_ABHNTH_117labels", mae_weight=0.5) #reduced for fine-tuning (original: 1.0)
         self.initial_lr = 1e-3 #reduced for fine-tuning (original: 1e-2)
 
+    def _get_default_monitor_for_early_stopping(self):
+        return 'val_losses', 'min', 'validation loss'
+
+    def _get_default_monitor_for_best_checkpoint(self):
+        return 'val_losses', 'min', 'validation loss'
+
     def _build_loss(self):
         loss = self.AFP_loss
         return loss
@@ -174,16 +180,9 @@ class nnUNetTrainerMRCT_AFP_ft(nnUNetTrainer):
         epoch_duration = self.logger.my_fantastic_logging['epoch_end_timestamps'][-1] - self.logger.my_fantastic_logging['epoch_start_timestamps'][-1]
         self.print_to_log_file(f"Epoch time: {np.round(epoch_duration, decimals=2)} s")
 
-        # Checkpoint handling for best and periodic saves
-        current_epoch = self.current_epoch
-        if (current_epoch + 1) % self.save_every == 0 and current_epoch != (self.num_epochs - 1):
-            self.save_checkpoint(join(self.output_folder, 'checkpoint_latest.pth'))
-
-        best_metric = 'val_losses'  # Example metric, adjust based on actual usage
-        if self._best_ema is None or self.logger.my_fantastic_logging[best_metric][-1] < self._best_ema:
-            self._best_ema = self.logger.my_fantastic_logging[best_metric][-1]
-            self.print_to_log_file(f"Yayy! New best EMA MAE: {np.round(self._best_ema, decimals=4)}")
-            self.save_checkpoint(join(self.output_folder, 'checkpoint_best.pth'))
+        self._maybe_save_periodic_checkpoint()
+        self._maybe_save_best_checkpoint()
+        self._update_early_stopping_state()
 
         if self.local_rank == 0:
             self.logger.plot_progress_png(self.output_folder)

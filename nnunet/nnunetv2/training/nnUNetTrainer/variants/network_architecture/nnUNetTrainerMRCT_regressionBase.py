@@ -37,6 +37,12 @@ class nnUNetTrainerMRCT_regressionBase(nnUNetTrainer):
         self.logger.my_fantastic_logging["online_masked_mae"] = []
         self.logger.my_fantastic_logging["online_valid_voxels"] = []
 
+    def _get_default_monitor_for_early_stopping(self) -> Tuple[str, str, str]:
+        return "val_losses", "min", "validation loss"
+
+    def _get_default_monitor_for_best_checkpoint(self) -> Tuple[str, str, str]:
+        return "val_losses", "min", "validation loss"
+
     @staticmethod
     def build_network_architecture(
         architecture_class_name: str,
@@ -237,14 +243,9 @@ class nnUNetTrainerMRCT_regressionBase(nnUNetTrainer):
         )
         self.print_to_log_file(f"Epoch time: {np.round(epoch_duration, decimals=2)} s")
 
-        current_epoch = self.current_epoch
-        if (current_epoch + 1) % self.save_every == 0 and current_epoch != (self.num_epochs - 1):
-            self.save_checkpoint(join(self.output_folder, "checkpoint_latest.pth"))
-
-        if self._best_ema is None or self.logger.my_fantastic_logging["val_losses"][-1] < self._best_ema:
-            self._best_ema = self.logger.my_fantastic_logging["val_losses"][-1]
-            self.print_to_log_file(f"New best validation loss: {np.round(self._best_ema, decimals=4)}")
-            self.save_checkpoint(join(self.output_folder, "checkpoint_best.pth"))
+        self._maybe_save_periodic_checkpoint()
+        self._maybe_save_best_checkpoint()
+        self._update_early_stopping_state()
 
         if self.local_rank == 0:
             self.logger.plot_progress_png(self.output_folder)
