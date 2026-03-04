@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N nngred
-#$ -l h_rt=36:59:00
+#$ -l h_rt=23:59:00
 #$ -l mem=5G
 #$ -l tmpfs=40G
 #$ -pe smp 8
