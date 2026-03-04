@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N nngred
-#$ -l h_rt=46:59:00
+#$ -l h_rt=36:59:00
 #$ -l mem=5G
 #$ -l tmpfs=40G
 #$ -pe smp 8
@@ -32,7 +32,7 @@ export nnUNet_results=/myriadfs/home/zcemexx/Scratch/nnUNet_results
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
 FOLD="${FOLD:-$((SGE_TASK_ID - 1))}"
-TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad_regfix}"
+TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_regfix}"
 PLANS="${PLANS:-nnResUNetPlans}"
 
 # Legacy trainers such as nnUNetTrainerMRCT_mae* are kept only for historical runs.
