@@ -10,12 +10,18 @@ import torch
 from nnunetv2.evaluation.evaluate_predictions import compute_regression_metrics_on_folder
 from nnunetv2.inference.export_prediction import convert_predicted_regression_to_original_shape
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
-from nnunetv2.utilities.regression import masked_gradient_loss, masked_l1_loss
+from nnunetv2.utilities.regression import (
+    compute_masked_gradient_mae,
+    compute_masked_pearson_r,
+    compute_regression_case_metrics,
+    masked_gradient_loss,
+    masked_l1_loss,
+)
 
 
 class FakeRegressionReaderWriter:
     def read_seg(self, filename):
-        return np.load(filename), {}
+        return np.load(filename), {'spacing': (2.0, 1.0, 1.0)}
 
 
 class DummyNetwork(torch.nn.Module):
@@ -28,6 +34,68 @@ def identity_resample(array, new_shape, current_spacing, target_spacing):
 
 
 class TestRegressionPipeline(unittest.TestCase):
+    def test_compute_masked_pearson_r_returns_expected_value(self):
+        pred = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+        gt = np.array([2.0, 4.0, 6.0, 8.0], dtype=np.float32)
+        valid_mask = np.array([True, True, True, False])
+
+        pearson_r = compute_masked_pearson_r(pred, gt, valid_mask)
+
+        self.assertAlmostEqual(pearson_r, 1.0, places=6)
+
+    def test_compute_masked_pearson_r_constant_input_returns_nan(self):
+        pred = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+        gt = np.array([0.0, 1.0, 2.0], dtype=np.float32)
+        valid_mask = np.array([True, True, True])
+
+        pearson_r = compute_masked_pearson_r(pred, gt, valid_mask)
+
+        self.assertTrue(np.isnan(pearson_r))
+
+    def test_compute_masked_gradient_mae_returns_expected_value(self):
+        pred = np.array([[[0.0, 1.0, 3.0]]], dtype=np.float32)
+        gt = np.array([[[0.0, 1.0, 2.0]]], dtype=np.float32)
+        valid_mask = np.ones_like(pred, dtype=bool)
+
+        gradient_mae = compute_masked_gradient_mae(pred, gt, valid_mask)
+
+        self.assertAlmostEqual(gradient_mae, 0.5, places=6)
+
+    def test_compute_masked_gradient_mae_respects_spacing(self):
+        pred = np.array([[[0.0, 2.0, 4.0]]], dtype=np.float32)
+        gt = np.array([[[0.0, 1.0, 2.0]]], dtype=np.float32)
+        valid_mask = np.ones_like(pred, dtype=bool)
+
+        gradient_mae = compute_masked_gradient_mae(pred, gt, valid_mask, spacing=(1.0, 1.0, 2.0))
+
+        self.assertAlmostEqual(gradient_mae, 0.5, places=6)
+
+    def test_compute_regression_case_metrics_includes_extended_metrics(self):
+        pred = np.array([[[1.0, 3.0], [0.0, 4.0]]], dtype=np.float32)
+        gt = np.array([[[1.0, 2.0], [0.0, 3.0]]], dtype=np.float32)
+        valid_mask = gt > 0
+        tissue_mask = np.array([[[1, 2], [0, 3]]], dtype=np.uint8)
+
+        metrics = compute_regression_case_metrics(
+            pred,
+            gt,
+            valid_mask,
+            tissue_mask=tissue_mask,
+            spacing=(1.0, 1.0, 1.0),
+        )
+
+        for key in (
+            'Pearson_r',
+            'Gradient_MAE',
+            'WM_MAE',
+            'GM_MAE',
+            'CSF_MAE',
+            'WM_ValidVoxelCount',
+            'GM_ValidVoxelCount',
+            'CSF_ValidVoxelCount',
+        ):
+            self.assertIn(key, metrics)
+
     def test_masked_l1_loss_empty_mask_keeps_graph_connected(self):
         pred = torch.randn((1, 1, 2, 2), requires_grad=True)
         target = torch.zeros_like(pred)
@@ -203,12 +271,16 @@ class TestRegressionPipeline(unittest.TestCase):
             base = Path(tmpdir)
             gt_dir = base / 'gt'
             pred_dir = base / 'pred'
+            raw_images_dir = base / 'imagesTr'
             gt_dir.mkdir()
             pred_dir.mkdir()
-            np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.uint8))
-            np.save(gt_dir / 'case2.npy', np.array([[[2, 2], [1, 0]]], dtype=np.uint8))
-            np.save(pred_dir / 'case1.npy', np.array([[[1, 3], [0, 4]]], dtype=np.uint8))
-            np.save(pred_dir / 'case2.npy', np.array([[[2, 1], [2, 0]]], dtype=np.uint8))
+            raw_images_dir.mkdir()
+            np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(gt_dir / 'case2.npy', np.array([[[2, 2], [1, 0]]], dtype=np.float32))
+            np.save(pred_dir / 'case1.npy', np.array([[[1, 3], [0, 4]]], dtype=np.float32))
+            np.save(pred_dir / 'case2.npy', np.array([[[2, 1], [2, 0]]], dtype=np.float32))
+            np.save(raw_images_dir / 'case1_0001.npy', np.array([[[1, 2], [0, 3]]], dtype=np.uint8))
+            np.save(raw_images_dir / 'case2_0001.npy', np.array([[[2, 1], [3, 0]]], dtype=np.uint8))
             output_file = pred_dir / 'summary.json'
 
             summary = compute_regression_metrics_on_folder(
@@ -218,6 +290,7 @@ class TestRegressionPipeline(unittest.TestCase):
                 FakeRegressionReaderWriter(),
                 '.npy',
                 num_processes=1,
+                raw_images_folder=str(raw_images_dir),
             )
 
             self.assertEqual(summary['task_type'], 'regression')
@@ -226,9 +299,111 @@ class TestRegressionPipeline(unittest.TestCase):
             self.assertEqual(summary['case_counts']['missing_cases'], [])
             self.assertEqual(summary['selection_metric']['name'], 'MAE')
             self.assertEqual(summary['selection_metric']['mode'], 'min')
-            for key in ('MAE', 'MSE', 'RMSE', 'Global_RMSE', 'Acc_1', 'Acc_3', 'Acc_5', 'ValidVoxelCount'):
+            for key in ('MAE', 'MSE', 'RMSE', 'Global_RMSE', 'Acc_1', 'Acc_3', 'Acc_5', 'ValidVoxelCount', 'Pearson_r', 'Gradient_MAE'):
                 self.assertIn(key, summary['foreground_mean'])
+            self.assertIn('tissue_mean', summary)
+            self.assertIn('WM', summary['tissue_mean'])
+            self.assertIn('GM', summary['tissue_mean'])
+            self.assertIn('CSF', summary['tissue_mean'])
             self.assertTrue(output_file.exists())
+
+    def test_compute_regression_metrics_on_folder_missing_tissue_file_raises(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            gt_dir = base / 'gt'
+            pred_dir = base / 'pred'
+            raw_images_dir = base / 'imagesTr'
+            gt_dir.mkdir()
+            pred_dir.mkdir()
+            raw_images_dir.mkdir()
+            np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(pred_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+
+            with self.assertRaises(RuntimeError):
+                compute_regression_metrics_on_folder(
+                    str(gt_dir),
+                    str(pred_dir),
+                    None,
+                    FakeRegressionReaderWriter(),
+                    '.npy',
+                    num_processes=1,
+                    raw_images_folder=str(raw_images_dir),
+                )
+
+    def test_compute_regression_metrics_on_folder_supports_custom_tissue_suffix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            gt_dir = base / 'gt'
+            pred_dir = base / 'pred'
+            raw_images_dir = base / 'imagesTr'
+            gt_dir.mkdir()
+            pred_dir.mkdir()
+            raw_images_dir.mkdir()
+            np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(pred_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(raw_images_dir / 'case1_0002.npy', np.array([[[1, 2], [0, 3]]], dtype=np.uint8))
+
+            summary = compute_regression_metrics_on_folder(
+                str(gt_dir),
+                str(pred_dir),
+                None,
+                FakeRegressionReaderWriter(),
+                '.npy',
+                num_processes=1,
+                raw_images_folder=str(raw_images_dir),
+                tissue_channel_suffix='_0002',
+            )
+
+            self.assertIn('tissue_mean', summary)
+
+    def test_compute_regression_metrics_on_folder_rejects_tissue_shape_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            gt_dir = base / 'gt'
+            pred_dir = base / 'pred'
+            raw_images_dir = base / 'imagesTr'
+            gt_dir.mkdir()
+            pred_dir.mkdir()
+            raw_images_dir.mkdir()
+            np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(pred_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(raw_images_dir / 'case1_0001.npy', np.zeros((2, 2, 2), dtype=np.uint8))
+
+            with self.assertRaises(ValueError):
+                compute_regression_metrics_on_folder(
+                    str(gt_dir),
+                    str(pred_dir),
+                    None,
+                    FakeRegressionReaderWriter(),
+                    '.npy',
+                    num_processes=1,
+                    raw_images_folder=str(raw_images_dir),
+                )
+
+    def test_compute_regression_metrics_on_folder_reports_nan_for_missing_tissue_class(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            gt_dir = base / 'gt'
+            pred_dir = base / 'pred'
+            raw_images_dir = base / 'imagesTr'
+            gt_dir.mkdir()
+            pred_dir.mkdir()
+            raw_images_dir.mkdir()
+            np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(pred_dir / 'case1.npy', np.array([[[1, 2], [0, 4]]], dtype=np.float32))
+            np.save(raw_images_dir / 'case1_0001.npy', np.array([[[1, 2], [0, 2]]], dtype=np.uint8))
+
+            summary = compute_regression_metrics_on_folder(
+                str(gt_dir),
+                str(pred_dir),
+                None,
+                FakeRegressionReaderWriter(),
+                '.npy',
+                num_processes=1,
+                raw_images_folder=str(raw_images_dir),
+            )
+
+            self.assertTrue(np.isnan(summary['tissue_mean']['CSF']['MAE']))
 
 
 if __name__ == '__main__':
