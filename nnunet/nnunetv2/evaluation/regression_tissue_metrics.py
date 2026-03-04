@@ -86,7 +86,7 @@ def compute_masked_gradient_mae(
     pred: np.ndarray,
     gt: np.ndarray,
     valid_mask: np.ndarray,
-    spacing: tuple | None = None,
+    spacing: Optional[tuple] = None,
 ) -> float:
     pred = np.asarray(pred, dtype=np.float32)
     gt = np.asarray(gt, dtype=np.float32)
@@ -224,7 +224,7 @@ def compute_metrics_for_named_mask(
     pred: np.ndarray,
     gt: np.ndarray,
     valid_mask: np.ndarray,
-    spacing: tuple | None = None,
+    spacing: Optional[tuple] = None,
     include_gradient_mae: bool = True,
     include_pearson_r: bool = True,
 ) -> dict:
@@ -278,7 +278,7 @@ def _metrics_with_total(
     pred: np.ndarray,
     gt: np.ndarray,
     tissue_mask: np.ndarray,
-    spacing: tuple | None,
+    spacing: Optional[tuple],
     include_gradient_mae: bool,
     include_pearson_r: bool,
 ) -> dict:
@@ -616,7 +616,7 @@ def compute_regression_metrics(
     reference_file: str,
     prediction_file: str,
     image_reader_writer: BaseReaderWriter,
-    tissue_mask_file: str | None = None,
+    tissue_mask_file: Optional[str] = None,
     tissue_channel_suffix: str = "_0001",
     include_gradient_mae: bool = True,
     include_pearson_r: bool = True,

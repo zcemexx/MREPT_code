@@ -154,7 +154,7 @@ def _extract_spacing_from_properties(properties: dict, ndim: int) -> Tuple[float
 def compute_regression_metrics(reference_file: str,
                                prediction_file: str,
                                image_reader_writer: BaseReaderWriter,
-                               tissue_mask_file: str | None = None,
+                               tissue_mask_file: Optional[str] = None,
                                tissue_channel_suffix: str = "_0001") -> dict:
     del tissue_channel_suffix
     gt_radius, gt_properties = image_reader_writer.read_seg(reference_file)
@@ -235,7 +235,7 @@ def compute_regression_metrics_on_folder(folder_ref: str, folder_pred: str, outp
                                          image_reader_writer: BaseReaderWriter,
                                          file_ending: str,
                                          num_processes: int = default_num_processes,
-                                         raw_images_folder: str | None = None,
+                                         raw_images_folder: Optional[str] = None,
                                          tissue_channel_suffix: str = "_0001") -> dict:
     if output_file is not None:
         assert output_file.endswith('.json'), 'output_file should end with .json'
