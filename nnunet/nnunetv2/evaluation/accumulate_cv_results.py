@@ -48,6 +48,7 @@ def accumulate_cv_results(trained_model_folder,
         if not isdir(gt_folder):
             gt_folder = join(nnUNet_preprocessed, plans_manager.dataset_name, 'gt_segmentations')
         if is_regression_dataset(dataset_json):
+            raw_images_folder = join(nnUNet_raw, plans_manager.dataset_name, 'imagesTr') if nnUNet_raw is not None else None
             compute_regression_metrics_on_folder(
                 gt_folder,
                 merged_output_folder,
@@ -55,6 +56,8 @@ def accumulate_cv_results(trained_model_folder,
                 rw,
                 dataset_json['file_ending'],
                 num_processes,
+                raw_images_folder=raw_images_folder,
+                tissue_channel_suffix='_0001',
             )
         else:
             label_manager = plans_manager.get_label_manager(dataset_json)

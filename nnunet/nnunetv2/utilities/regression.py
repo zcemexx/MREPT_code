@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -8,6 +8,11 @@ from torch import Tensor, nn
 
 
 ArrayLike = Union[np.ndarray, Tensor]
+TISSUE_LABELS = {
+    "WM": 1,
+    "GM": 2,
+    "CSF": 3,
+}
 
 
 def is_regression_dataset(dataset_json: dict) -> bool:
@@ -137,9 +142,93 @@ def convert_regression_logits_to_radius(predicted_logits: ArrayLike, dataset_jso
     return denormalize_radius(pred_norm, dataset_json)
 
 
+def compute_masked_pearson_r(pred: np.ndarray, gt: np.ndarray, valid_mask: np.ndarray) -> float:
+    pred = np.asarray(pred, dtype=np.float32)
+    gt = np.asarray(gt, dtype=np.float32)
+    valid_mask = np.asarray(valid_mask, dtype=bool)
+
+    pred_valid = pred[valid_mask]
+    gt_valid = gt[valid_mask]
+    if pred_valid.size < 2:
+        return np.nan
+
+    pred_centered = pred_valid - np.mean(pred_valid)
+    gt_centered = gt_valid - np.mean(gt_valid)
+    pred_var = float(np.sum(np.square(pred_centered)))
+    gt_var = float(np.sum(np.square(gt_centered)))
+    if pred_var == 0.0 or gt_var == 0.0:
+        return np.nan
+
+    covariance = float(np.sum(pred_centered * gt_centered))
+    return covariance / np.sqrt(pred_var * gt_var)
+
+
+def compute_masked_gradient_mae(pred: np.ndarray,
+                                gt: np.ndarray,
+                                valid_mask: np.ndarray,
+                                spacing: Optional[Tuple[float, ...]] = None) -> float:
+    pred = np.asarray(pred, dtype=np.float32)
+    gt = np.asarray(gt, dtype=np.float32)
+    valid_mask = np.asarray(valid_mask, dtype=bool)
+
+    if pred.shape != gt.shape or pred.shape != valid_mask.shape:
+        raise ValueError(
+            f"Shape mismatch for masked gradient MAE: pred={pred.shape}, gt={gt.shape}, mask={valid_mask.shape}"
+        )
+    if valid_mask.sum() < 2:
+        return np.nan
+
+    if spacing is None:
+        spacing = (1.0,) * pred.ndim
+    elif len(spacing) != pred.ndim:
+        raise ValueError(f"spacing must have length {pred.ndim}, got {spacing}")
+
+    grad_err_sum = 0.0
+    valid_pairs_count = 0
+    for axis in range(pred.ndim):
+        if pred.shape[axis] <= 1:
+            continue
+
+        diff_pred = np.diff(pred, axis=axis)
+        diff_gt = np.diff(gt, axis=axis)
+
+        source_slice = [slice(None)] * pred.ndim
+        target_slice = [slice(None)] * pred.ndim
+        source_slice[axis] = slice(None, -1)
+        target_slice[axis] = slice(1, None)
+        pair_mask = valid_mask[tuple(source_slice)] & valid_mask[tuple(target_slice)]
+        if not np.any(pair_mask):
+            continue
+
+        grad_err = np.abs(diff_pred[pair_mask] - diff_gt[pair_mask]) / float(spacing[axis])
+        grad_err_sum += float(np.sum(grad_err))
+        valid_pairs_count += int(np.count_nonzero(pair_mask))
+
+    if valid_pairs_count == 0:
+        return np.nan
+    return grad_err_sum / valid_pairs_count
+
+
+def _compute_tissue_mae(pred: np.ndarray,
+                        gt: np.ndarray,
+                        valid_mask: np.ndarray,
+                        tissue_mask: Optional[np.ndarray],
+                        tissue_value: int) -> Tuple[float, int]:
+    if tissue_mask is None:
+        return np.nan, 0
+
+    tissue_valid_mask = valid_mask & (tissue_mask == tissue_value)
+    tissue_voxels = int(np.count_nonzero(tissue_valid_mask))
+    if tissue_voxels == 0:
+        return np.nan, 0
+    return float(np.mean(np.abs(pred[tissue_valid_mask] - gt[tissue_valid_mask]))), tissue_voxels
+
+
 def compute_regression_case_metrics(pred_radius: np.ndarray,
                                     gt_radius: np.ndarray,
-                                    valid_mask: np.ndarray) -> dict:
+                                    valid_mask: np.ndarray,
+                                    tissue_mask: Optional[np.ndarray] = None,
+                                    spacing: Optional[Tuple[float, ...]] = None) -> dict:
     pred_radius = np.asarray(pred_radius, dtype=np.float32)
     gt_radius = np.asarray(gt_radius, dtype=np.float32)
     valid_mask = np.asarray(valid_mask, dtype=bool)
@@ -147,10 +236,24 @@ def compute_regression_case_metrics(pred_radius: np.ndarray,
         raise ValueError(
             f"Shape mismatch for regression metrics: pred={pred_radius.shape}, gt={gt_radius.shape}, mask={valid_mask.shape}"
         )
+    if tissue_mask is not None:
+        tissue_mask = np.asarray(tissue_mask)
+        if tissue_mask.shape != pred_radius.shape:
+            raise ValueError(
+                f"Shape mismatch for tissue metrics: tissue_mask={tissue_mask.shape}, expected={pred_radius.shape}"
+            )
 
     valid_voxels = int(valid_mask.sum())
+    metrics = {
+        "Pearson_r": np.nan,
+        "Gradient_MAE": np.nan,
+    }
+    for tissue_name in TISSUE_LABELS:
+        metrics[f"{tissue_name}_MAE"] = np.nan
+        metrics[f"{tissue_name}_ValidVoxelCount"] = 0
+
     if valid_voxels == 0:
-        return {
+        metrics.update({
             "MAE": np.nan,
             "MSE": np.nan,
             "RMSE": np.nan,
@@ -158,12 +261,13 @@ def compute_regression_case_metrics(pred_radius: np.ndarray,
             "Acc_3": np.nan,
             "Acc_5": np.nan,
             "ValidVoxelCount": 0,
-        }
+        })
+        return metrics
 
     errors = pred_radius[valid_mask] - gt_radius[valid_mask]
     abs_errors = np.abs(errors)
     mse = float(np.mean(np.square(errors)))
-    return {
+    metrics.update({
         "MAE": float(np.mean(abs_errors)),
         "MSE": mse,
         "RMSE": float(np.sqrt(mse)),
@@ -171,7 +275,14 @@ def compute_regression_case_metrics(pred_radius: np.ndarray,
         "Acc_3": float(np.mean(abs_errors <= 3.0)),
         "Acc_5": float(np.mean(abs_errors <= 5.0)),
         "ValidVoxelCount": valid_voxels,
-    }
+        "Pearson_r": compute_masked_pearson_r(pred_radius, gt_radius, valid_mask),
+        "Gradient_MAE": compute_masked_gradient_mae(pred_radius, gt_radius, valid_mask, spacing=spacing),
+    })
+    for tissue_name, tissue_value in TISSUE_LABELS.items():
+        tissue_mae, tissue_voxels = _compute_tissue_mae(pred_radius, gt_radius, valid_mask, tissue_mask, tissue_value)
+        metrics[f"{tissue_name}_MAE"] = tissue_mae
+        metrics[f"{tissue_name}_ValidVoxelCount"] = tissue_voxels
+    return metrics
 
 
 class MaskedL1Loss(nn.Module):

@@ -14,7 +14,7 @@ from nnunetv2.imageio.reader_writer_registry import (
 from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
 from nnunetv2.utilities.json_export import recursive_fix_for_json_export
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
-from nnunetv2.utilities.regression import compute_regression_case_metrics, is_regression_dataset
+from nnunetv2.utilities.regression import TISSUE_LABELS, compute_regression_case_metrics, is_regression_dataset
 
 
 def label_or_region_to_key(label_or_region: Union[int, Tuple[int]]):
@@ -130,20 +130,57 @@ def _unwrap_single_channel_seg(seg: np.ndarray, role: str) -> np.ndarray:
     return seg
 
 
+def _safe_nanmean(values: List[float]) -> float:
+    arr = np.asarray(values, dtype=np.float64)
+    if arr.size == 0 or np.all(np.isnan(arr)):
+        return np.nan
+    return float(np.nanmean(arr))
+
+
+def _extract_spacing_from_properties(properties: dict, ndim: int) -> Tuple[float, ...]:
+    if not isinstance(properties, dict):
+        return (1.0,) * ndim
+
+    spacing = properties.get('spacing')
+    if spacing is None:
+        return (1.0,) * ndim
+
+    spacing = tuple(float(i) for i in spacing)
+    if len(spacing) != ndim:
+        return (1.0,) * ndim
+    return spacing
+
+
 def compute_regression_metrics(reference_file: str,
                                prediction_file: str,
-                               image_reader_writer: BaseReaderWriter) -> dict:
-    gt_radius, _ = image_reader_writer.read_seg(reference_file)
+                               image_reader_writer: BaseReaderWriter,
+                               tissue_mask_file: str | None = None,
+                               tissue_channel_suffix: str = "_0001") -> dict:
+    del tissue_channel_suffix
+    gt_radius, gt_properties = image_reader_writer.read_seg(reference_file)
     pred_radius, _ = image_reader_writer.read_seg(prediction_file)
     gt_radius = _unwrap_single_channel_seg(gt_radius, 'reference')
     pred_radius = _unwrap_single_channel_seg(pred_radius, 'prediction')
     valid_mask = gt_radius > 0
+    tissue_mask = None
+    if tissue_mask_file is not None:
+        tissue_mask, _ = image_reader_writer.read_seg(tissue_mask_file)
+        tissue_mask = _unwrap_single_channel_seg(tissue_mask, 'tissue_mask')
+    spacing = _extract_spacing_from_properties(gt_properties, gt_radius.ndim)
 
     results = {
         'reference_file': reference_file,
         'prediction_file': prediction_file,
     }
-    results.update(compute_regression_case_metrics(pred_radius, gt_radius, valid_mask))
+    results.update(
+        compute_regression_case_metrics(
+            pred_radius,
+            gt_radius,
+            valid_mask,
+            tissue_mask=tissue_mask,
+            spacing=spacing,
+        )
+    )
     return results
 
 
@@ -159,14 +196,23 @@ def _build_regression_summary(metric_per_case: List[dict],
         global_rmse = np.nan
 
     foreground_mean = {
-        'MAE': float(np.nanmean([case['MAE'] for case in metric_per_case])),
-        'MSE': float(np.nanmean([case['MSE'] for case in metric_per_case])),
-        'RMSE': float(np.nanmean([case['RMSE'] for case in metric_per_case])),
+        'MAE': _safe_nanmean([case['MAE'] for case in metric_per_case]),
+        'MSE': _safe_nanmean([case['MSE'] for case in metric_per_case]),
+        'RMSE': _safe_nanmean([case['RMSE'] for case in metric_per_case]),
         'Global_RMSE': global_rmse,
-        'Acc_1': float(np.nanmean([case['Acc_1'] for case in metric_per_case])),
-        'Acc_3': float(np.nanmean([case['Acc_3'] for case in metric_per_case])),
-        'Acc_5': float(np.nanmean([case['Acc_5'] for case in metric_per_case])),
+        'Acc_1': _safe_nanmean([case['Acc_1'] for case in metric_per_case]),
+        'Acc_3': _safe_nanmean([case['Acc_3'] for case in metric_per_case]),
+        'Acc_5': _safe_nanmean([case['Acc_5'] for case in metric_per_case]),
+        'Pearson_r': _safe_nanmean([case['Pearson_r'] for case in metric_per_case]),
+        'Gradient_MAE': _safe_nanmean([case['Gradient_MAE'] for case in metric_per_case]),
         'ValidVoxelCount': total_valid_voxels,
+    }
+    tissue_mean = {
+        tissue_name: {
+            'MAE': _safe_nanmean([case[f'{tissue_name}_MAE'] for case in metric_per_case]),
+            'ValidVoxelCount': int(sum(case[f'{tissue_name}_ValidVoxelCount'] for case in metric_per_case)),
+        }
+        for tissue_name in TISSUE_LABELS
     }
 
     result = {
@@ -174,6 +220,7 @@ def _build_regression_summary(metric_per_case: List[dict],
         'case_counts': case_counts,
         'metric_per_case': metric_per_case,
         'foreground_mean': foreground_mean,
+        'tissue_mean': tissue_mean,
         'selection_metric': {
             'name': 'MAE',
             'mode': 'min',
@@ -187,7 +234,9 @@ def _build_regression_summary(metric_per_case: List[dict],
 def compute_regression_metrics_on_folder(folder_ref: str, folder_pred: str, output_file: Optional[str],
                                          image_reader_writer: BaseReaderWriter,
                                          file_ending: str,
-                                         num_processes: int = default_num_processes) -> dict:
+                                         num_processes: int = default_num_processes,
+                                         raw_images_folder: str | None = None,
+                                         tissue_channel_suffix: str = "_0001") -> dict:
     if output_file is not None:
         assert output_file.endswith('.json'), 'output_file should end with .json'
 
@@ -209,6 +258,20 @@ def compute_regression_metrics_on_folder(folder_ref: str, folder_pred: str, outp
         )
 
     eval_files = sorted(ref_cases & pred_cases)
+    tissue_mask_files = {}
+    if raw_images_folder is not None:
+        missing_tissue_cases = []
+        for case_id in eval_files:
+            tissue_mask_file = join(raw_images_folder, case_id + tissue_channel_suffix + file_ending)
+            if not isfile(tissue_mask_file):
+                missing_tissue_cases.append(case_id)
+            else:
+                tissue_mask_files[case_id] = tissue_mask_file
+        if missing_tissue_cases:
+            raise RuntimeError(
+                f'Regression evaluation aborted because tissue masks are missing for cases: {missing_tissue_cases}'
+            )
+
     with multiprocessing.get_context("spawn").Pool(num_processes) as pool:
         results = pool.starmap(
             compute_regression_metrics,
@@ -217,6 +280,8 @@ def compute_regression_metrics_on_folder(folder_ref: str, folder_pred: str, outp
                     join(folder_ref, case_id + file_ending),
                     join(folder_pred, case_id + file_ending),
                     image_reader_writer,
+                    tissue_mask_files.get(case_id),
+                    tissue_channel_suffix,
                 )
                 for case_id in eval_files
             ],

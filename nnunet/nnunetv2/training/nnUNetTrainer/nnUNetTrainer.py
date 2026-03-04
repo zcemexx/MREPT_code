@@ -38,7 +38,7 @@ from nnunetv2.inference.export_prediction import (
 )
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from nnunetv2.inference.sliding_window_prediction import compute_gaussian
-from nnunetv2.paths import nnUNet_preprocessed, nnUNet_results
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw, nnUNet_results
 from nnunetv2.training.data_augmentation.compute_initial_patch_size import get_patch_size
 from nnunetv2.training.data_augmentation.custom_transforms.cascade_transforms import MoveSegAsOneHotToData, \
     ApplyRandomBinaryOperatorTransform, RemoveRandomConnectedComponentFromOneHotEncodingTransform
@@ -1724,6 +1724,7 @@ class nnUNetTrainer(object):
             eval_num_processes = default_num_processes * dist.get_world_size() if self.is_ddp else default_num_processes
             gt_folder = join(self.preprocessed_dataset_folder_base, 'gt_segmentations')
             if is_regression_task:
+                raw_images_folder = join(nnUNet_raw, self.plans_manager.dataset_name, 'imagesTr') if nnUNet_raw is not None else None
                 metrics = compute_regression_metrics_on_folder(
                     gt_folder,
                     validation_output_folder,
@@ -1731,6 +1732,8 @@ class nnUNetTrainer(object):
                     self.plans_manager.image_reader_writer_class(),
                     self.dataset_json["file_ending"],
                     num_processes=eval_num_processes,
+                    raw_images_folder=raw_images_folder,
+                    tissue_channel_suffix='_0001',
                 )
                 self.print_to_log_file(
                     f"expected_cases={metrics['case_counts']['expected_cases']}",
@@ -1785,6 +1788,26 @@ class nnUNetTrainer(object):
                 )
                 self.print_to_log_file(
                     f"Acc±5: {metrics['foreground_mean']['Acc_5']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"Pearson r: {metrics['foreground_mean']['Pearson_r']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"Gradient MAE: {metrics['foreground_mean']['Gradient_MAE']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"WM MAE: {metrics['tissue_mean']['WM']['MAE']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"GM MAE: {metrics['tissue_mean']['GM']['MAE']}",
+                    also_print_to_console=True,
+                )
+                self.print_to_log_file(
+                    f"CSF MAE: {metrics['tissue_mean']['CSF']['MAE']}",
                     also_print_to_console=True,
                 )
             else:
