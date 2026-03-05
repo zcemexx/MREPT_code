@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N nngred
-#$ -l h_rt=23:59:00
+#$ -l h_rt=08:59:00
 #$ -l mem=5G
 #$ -l tmpfs=40G
 #$ -pe smp 8
@@ -55,7 +55,7 @@ nvidia-smi || true
 
 nnUNetv2_train "$DATASET_ID" "$CONFIG" "$FOLD" -tr "$TRAINER" -p "$PLANS" \
   --early_stopping \
-  --es_patience 60 \
+  --es_patience 30 \
   --es_min_epochs 150 \
   --es_min_delta 0.001 \
   --es_delta_mode rel

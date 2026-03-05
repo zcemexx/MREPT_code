@@ -1736,19 +1736,11 @@ class nnUNetTrainer(object):
                     tissue_channel_suffix='_0001',
                 )
                 self.print_to_log_file(
-                    f"expected_cases={metrics['case_counts']['expected_cases']}",
+                    f"included_cases={metrics['case_counts']['included_case_ids']}",
                     also_print_to_console=True,
                 )
                 self.print_to_log_file(
-                    f"predicted_cases={metrics['case_counts']['predicted_cases']}",
-                    also_print_to_console=True,
-                )
-                self.print_to_log_file(
-                    f"missing_cases={metrics['case_counts']['missing_cases']}",
-                    also_print_to_console=True,
-                )
-                self.print_to_log_file(
-                    f"unexpected_cases={metrics['case_counts']['unexpected_cases']}",
+                    f"missing_cases={metrics['case_counts']['missing_case_ids']}",
                     also_print_to_console=True,
                 )
             else:

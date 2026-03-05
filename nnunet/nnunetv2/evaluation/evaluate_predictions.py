@@ -244,32 +244,34 @@ def compute_regression_metrics_on_folder(folder_ref: str, folder_pred: str, outp
     files_pred = sorted(subfiles(folder_pred, suffix=file_ending, join=False))
     ref_cases = {_strip_file_ending(i, file_ending) for i in files_ref}
     pred_cases = {_strip_file_ending(i, file_ending) for i in files_pred}
-    missing_cases = sorted(ref_cases - pred_cases)
-    unexpected_cases = sorted(pred_cases - ref_cases)
+    missing_case_ids = sorted(ref_cases - pred_cases)
+    unexpected_case_ids = sorted(pred_cases - ref_cases)
+    included_case_ids = sorted(ref_cases & pred_cases)
+    skipped_missing_tissue_cases = []
 
-    print(f'expected_cases={len(ref_cases)}')
-    print(f'predicted_cases={len(pred_cases)}')
-    print(f'missing_cases={missing_cases}')
-    print(f'unexpected_cases={unexpected_cases}')
+    print(f'included_cases={included_case_ids}')
+    print(f'missing_cases={missing_case_ids}')
 
-    if missing_cases:
+    if len(included_case_ids) == 0:
         raise RuntimeError(
-            f'Regression evaluation aborted because predictions are missing for cases: {missing_cases}'
+            'Regression evaluation aborted because there are no overlapping prediction/reference cases to evaluate.'
         )
 
-    eval_files = sorted(ref_cases & pred_cases)
+    eval_files = included_case_ids
     tissue_mask_files = {}
     if raw_images_folder is not None:
-        missing_tissue_cases = []
-        for case_id in eval_files:
+        for case_id in included_case_ids:
             tissue_mask_file = join(raw_images_folder, case_id + tissue_channel_suffix + file_ending)
             if not isfile(tissue_mask_file):
-                missing_tissue_cases.append(case_id)
+                skipped_missing_tissue_cases.append(case_id)
             else:
                 tissue_mask_files[case_id] = tissue_mask_file
-        if missing_tissue_cases:
+        if len(skipped_missing_tissue_cases) > 0:
+            skipped_set = set(skipped_missing_tissue_cases)
+            eval_files = [case_id for case_id in included_case_ids if case_id not in skipped_set]
+        if len(eval_files) == 0:
             raise RuntimeError(
-                f'Regression evaluation aborted because tissue masks are missing for cases: {missing_tissue_cases}'
+                'Regression evaluation aborted because all overlapping cases are missing tissue masks.'
             )
 
     with multiprocessing.get_context("spawn").Pool(num_processes) as pool:
@@ -298,8 +300,13 @@ def compute_regression_metrics_on_folder(folder_ref: str, folder_pred: str, outp
         {
             'expected_cases': len(ref_cases),
             'predicted_cases': len(pred_cases),
-            'missing_cases': missing_cases,
-            'unexpected_cases': unexpected_cases,
+            'included_cases': len(eval_files),
+            'missing_cases': len(missing_case_ids),
+            'included_case_ids': eval_files,
+            'missing_case_ids': missing_case_ids,
+            'skipped_missing_tissue_cases': skipped_missing_tissue_cases,
+            'unexpected_cases': len(unexpected_case_ids),
+            'unexpected_case_ids': unexpected_case_ids,
         },
     )
     if output_file is not None:

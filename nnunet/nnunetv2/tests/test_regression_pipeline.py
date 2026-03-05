@@ -242,7 +242,7 @@ class TestRegressionPipeline(unittest.TestCase):
                 {'regression_task': True, 'kernel_radius_min': 1, 'kernel_radius_max': 30},
             )
 
-    def test_compute_regression_metrics_on_folder_missing_case_raises_without_summary(self):
+    def test_compute_regression_metrics_on_folder_missing_case_writes_summary(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
             gt_dir = base / 'gt'
@@ -254,17 +254,40 @@ class TestRegressionPipeline(unittest.TestCase):
             np.save(pred_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.uint8))
             output_file = pred_dir / 'summary.json'
 
+            summary = compute_regression_metrics_on_folder(
+                str(gt_dir),
+                str(pred_dir),
+                str(output_file),
+                FakeRegressionReaderWriter(),
+                '.npy',
+                num_processes=1,
+            )
+
+            self.assertTrue(output_file.exists())
+            self.assertEqual(summary['case_counts']['included_cases'], 1)
+            self.assertEqual(summary['case_counts']['missing_cases'], 1)
+            self.assertEqual(summary['case_counts']['included_case_ids'], ['case1'])
+            self.assertEqual(summary['case_counts']['missing_case_ids'], ['case2'])
+
+    def test_compute_regression_metrics_on_folder_zero_overlap_still_raises(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            gt_dir = base / 'gt'
+            pred_dir = base / 'pred'
+            gt_dir.mkdir()
+            pred_dir.mkdir()
+            np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.uint8))
+            np.save(pred_dir / 'case9.npy', np.array([[[1, 2], [0, 3]]], dtype=np.uint8))
+
             with self.assertRaises(RuntimeError):
                 compute_regression_metrics_on_folder(
                     str(gt_dir),
                     str(pred_dir),
-                    str(output_file),
+                    None,
                     FakeRegressionReaderWriter(),
                     '.npy',
                     num_processes=1,
                 )
-
-            self.assertFalse(output_file.exists())
 
     def test_compute_regression_metrics_on_folder_writes_regression_summary(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -296,7 +319,9 @@ class TestRegressionPipeline(unittest.TestCase):
             self.assertEqual(summary['task_type'], 'regression')
             self.assertEqual(summary['case_counts']['expected_cases'], 2)
             self.assertEqual(summary['case_counts']['predicted_cases'], 2)
-            self.assertEqual(summary['case_counts']['missing_cases'], [])
+            self.assertEqual(summary['case_counts']['included_cases'], 2)
+            self.assertEqual(summary['case_counts']['missing_cases'], 0)
+            self.assertEqual(summary['case_counts']['missing_case_ids'], [])
             self.assertEqual(summary['selection_metric']['name'], 'MAE')
             self.assertEqual(summary['selection_metric']['mode'], 'min')
             for key in ('MAE', 'MSE', 'RMSE', 'Global_RMSE', 'Acc_1', 'Acc_3', 'Acc_5', 'ValidVoxelCount', 'Pearson_r', 'Gradient_MAE'):
@@ -307,7 +332,7 @@ class TestRegressionPipeline(unittest.TestCase):
             self.assertIn('CSF', summary['tissue_mean'])
             self.assertTrue(output_file.exists())
 
-    def test_compute_regression_metrics_on_folder_missing_tissue_file_raises(self):
+    def test_compute_regression_metrics_on_folder_missing_tissue_file_skips_case(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
             gt_dir = base / 'gt'
@@ -317,18 +342,23 @@ class TestRegressionPipeline(unittest.TestCase):
             pred_dir.mkdir()
             raw_images_dir.mkdir()
             np.save(gt_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(gt_dir / 'case2.npy', np.array([[[2, 2], [1, 0]]], dtype=np.float32))
             np.save(pred_dir / 'case1.npy', np.array([[[1, 2], [0, 3]]], dtype=np.float32))
+            np.save(pred_dir / 'case2.npy', np.array([[[2, 2], [1, 0]]], dtype=np.float32))
+            np.save(raw_images_dir / 'case2_0001.npy', np.array([[[1, 2], [0, 3]]], dtype=np.uint8))
 
-            with self.assertRaises(RuntimeError):
-                compute_regression_metrics_on_folder(
-                    str(gt_dir),
-                    str(pred_dir),
-                    None,
-                    FakeRegressionReaderWriter(),
-                    '.npy',
-                    num_processes=1,
-                    raw_images_folder=str(raw_images_dir),
-                )
+            summary = compute_regression_metrics_on_folder(
+                str(gt_dir),
+                str(pred_dir),
+                None,
+                FakeRegressionReaderWriter(),
+                '.npy',
+                num_processes=1,
+                raw_images_folder=str(raw_images_dir),
+            )
+            self.assertEqual(summary['case_counts']['included_cases'], 1)
+            self.assertEqual(summary['case_counts']['included_case_ids'], ['case2'])
+            self.assertEqual(summary['case_counts']['skipped_missing_tissue_cases'], ['case1'])
 
     def test_compute_regression_metrics_on_folder_supports_custom_tissue_suffix(self):
         with tempfile.TemporaryDirectory() as tmpdir:

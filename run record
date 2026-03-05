@@ -297,3 +297,12 @@ python -m pip install -e .
 使用了新的trainer
 
 
+job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID 
+-----------------------------------------------------------------------------------------------------------------
+ 602370 3.12599 nngred     zcemexx      qw    03/04/2026 12:06:27                                    8 1
+ 602370 0.00000 nngred     zcemexx      hqw   03/04/2026 12:06:27                                    8 2-5:1
+
+
+ 602370 3.40344 nngred     zcemexx      r     03/04/2026 20:06:01 Bran@node-u00a-001.myriad.ucl.     8 1
+ 602370 2.52477 nngred     zcemexx      qw    03/04/2026 12:06:27                                    8 2
+ 602370 0.00000 nngred     zcemexx      hqw   03/04/2026 12:06:27                                    8 3-5:1
