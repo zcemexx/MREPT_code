@@ -4,7 +4,7 @@ import argparse
 
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.evaluation.regression_tissue_metrics import compute_regression_metrics_on_folder_with_tissues
-from nnunetv2.imageio.reader_writer_registry import determine_reader_writer_from_file_ending
+from nnunetv2.imageio.nibabel_reader_writer import NibabelIO
 
 
 def evaluate_regression_tissue_predictions_entry_point():
@@ -36,12 +36,12 @@ def evaluate_regression_tissue_predictions_entry_point():
     parser.add_argument("--residual-limit", required=False, default=5, type=int, help="clipping limit for residual histogram")
     args = parser.parse_args()
 
-    image_reader_writer = determine_reader_writer_from_file_ending(
-        args.file_ending,
-        example_file=None,
-        allow_nonmatching_filename=False,
-        verbose=False,
-    )()
+    if args.file_ending.lower() not in NibabelIO.supported_file_endings:
+        raise ValueError(
+            f"Regression tissue evaluation is fixed to NibabelIO, unsupported file ending: {args.file_ending}. "
+            f"Supported endings: {NibabelIO.supported_file_endings}"
+        )
+    image_reader_writer = NibabelIO()
 
     summary = compute_regression_metrics_on_folder_with_tissues(
         folder_ref=args.folder_ref,

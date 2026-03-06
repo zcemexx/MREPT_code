@@ -156,7 +156,7 @@ bash predict_local.sh
 
 python -m nnunetv2.evaluation.evaluate_regression_tissue_predictions \
   --folder-ref /home/linux1917366562/MREPT_code/data/exps/labelsTr \
-  --folder-pred /home/linux1917366562/MREPT_code/preds_local/5f \
+  --folder-pred /home/linux1917366562/MREPT_code/preds_local/mae_gra/5f \
   --folder-images /home/linux1917366562/MREPT_code/data/M6 \
   --output-json /home/linux1917366562/MREPT_code/eval/M6/summary.json \
   --file-ending .nii.gz \

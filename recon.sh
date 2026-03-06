@@ -1,10 +1,10 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N eptRecon
-#$ -l h_rt=15:59:00
+#$ -l h_rt=12:59:00
 #$ -l mem=5G
 #$ -l tmpfs=16G
-#$ -pe smp 8
+#$ -pe smp 16
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -j y
@@ -13,12 +13,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 CODE_DIR="${CODE_DIR:-/home/zcemexx/projects/MREPT_code/matlab/code}"
 LOG_DIR="${LOG_DIR:-/home/zcemexx/Scratch/logs}"
 mkdir -p "$LOG_DIR"
 
 PHASE5_ROOT="${PHASE5_ROOT:-/home/zcemexx/Scratch/outputs/phase5}"
-RADIUS_PRED_ROOT="${RADIUS_PRED_ROOT:-/home/zcemexx/Scratch/pred/preds_local}"
+RADIUS_PRED_ROOT="${RADIUS_PRED_ROOT:-$/home/zcemexx/Scratch/pred/preds_local/mae/5f}"
 RECON_INPLACE_IO="${RECON_INPLACE_IO:-false}"
 RECON_OUT_ROOT="${RECON_OUT_ROOT:-/home/zcemexx/Scratch/outputs/phase5_sigma_recon}"
 
@@ -45,37 +47,44 @@ find_radius_file() {
     local p
     for p in "${candidates[@]}"; do
         if [[ -f "$p" ]]; then
-            printf '%s
-' "$p"
+            printf '%s\n' "$p"
             return 0
         fi
     done
 
     p="$(compgen -G "$pred_root/${case_name}_${snr_tag}*.nii.gz" | head -n 1 || true)"
     if [[ -n "$p" ]]; then
-        printf '%s
-' "$p"
+        printf '%s\n' "$p"
         return 0
     fi
 
     p="$(compgen -G "$pred_root/${case_name}_${snr_tag}*.nii" | head -n 1 || true)"
     if [[ -n "$p" ]]; then
-        printf '%s
-' "$p"
+        printf '%s\n' "$p"
         return 0
     fi
 
     p="$(compgen -G "$pred_root/${case_name}/${case_name}_${snr_tag}*.nii.gz" | head -n 1 || true)"
     if [[ -n "$p" ]]; then
-        printf '%s
-' "$p"
+        printf '%s\n' "$p"
         return 0
     fi
 
     p="$(compgen -G "$pred_root/${case_name}/${case_name}_${snr_tag}*.nii" | head -n 1 || true)"
     if [[ -n "$p" ]]; then
-        printf '%s
-' "$p"
+        printf '%s\n' "$p"
+        return 0
+    fi
+
+    p="$(find "$pred_root" -maxdepth 3 -type f \( -name "${case_name}_${snr_tag}.nii.gz" -o -name "${case_name}_${snr_tag}.nii" \) | head -n 1 || true)"
+    if [[ -n "$p" ]]; then
+        printf '%s\n' "$p"
+        return 0
+    fi
+
+    p="$(find "$pred_root" -maxdepth 3 -type f \( -name "${case_name}_${snr_tag}*.nii.gz" -o -name "${case_name}_${snr_tag}*.nii" \) | head -n 1 || true)"
+    if [[ -n "$p" ]]; then
+        printf '%s\n' "$p"
         return 0
     fi
 
@@ -149,7 +158,7 @@ echo "================================================="
 
 if [[ -z "$TASK_ID" ]]; then
     echo "[INFO] No SGE_TASK_ID/RECON_TASK_ID provided."
-    echo "[INFO] Submit as array, e.g.: qsub -t 1-${TASK_COUNT} /home/zcemexx/projects/MREPT_code/recon.sh"
+    echo "[INFO] Submit as array, e.g.: qsub -v RADIUS_PRED_ROOT=$RADIUS_PRED_ROOT -t 1-${TASK_COUNT} $SCRIPT_DIR/recon.sh"
     exit 0
 fi
 

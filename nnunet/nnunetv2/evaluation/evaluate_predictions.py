@@ -11,6 +11,7 @@ from nnunetv2.imageio.reader_writer_registry import (
     determine_reader_writer_from_dataset_json,
     determine_reader_writer_from_file_ending,
 )
+from nnunetv2.imageio.nibabel_reader_writer import NibabelIO
 from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
 from nnunetv2.utilities.json_export import recursive_fix_for_json_export
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
@@ -151,6 +152,20 @@ def _extract_spacing_from_properties(properties: dict, ndim: int) -> Tuple[float
     return spacing
 
 
+def _enforce_nibabel_for_regression(file_ending: str, image_reader_writer: BaseReaderWriter) -> BaseReaderWriter:
+    if file_ending.lower() not in NibabelIO.supported_file_endings:
+        raise ValueError(
+            f"Regression evaluation is fixed to NibabelIO, unsupported file ending: {file_ending}. "
+            f"Supported endings: {NibabelIO.supported_file_endings}"
+        )
+    if not isinstance(image_reader_writer, NibabelIO):
+        print(
+            f"Regression evaluation overrides reader {image_reader_writer.__class__.__name__} "
+            f"-> {NibabelIO.__name__} for geometry consistency."
+        )
+    return NibabelIO()
+
+
 def compute_regression_metrics(reference_file: str,
                                prediction_file: str,
                                image_reader_writer: BaseReaderWriter,
@@ -239,6 +254,8 @@ def compute_regression_metrics_on_folder(folder_ref: str, folder_pred: str, outp
                                          tissue_channel_suffix: str = "_0001") -> dict:
     if output_file is not None:
         assert output_file.endswith('.json'), 'output_file should end with .json'
+
+    image_reader_writer = _enforce_nibabel_for_regression(file_ending, image_reader_writer)
 
     files_ref = sorted(subfiles(folder_ref, suffix=file_ending, join=False))
     files_pred = sorted(subfiles(folder_pred, suffix=file_ending, join=False))
@@ -375,6 +392,7 @@ def compute_metrics_on_folder2(folder_ref: str, folder_pred: str, dataset_json_f
         output_file = join(folder_pred, 'summary.json')
 
     if is_regression_dataset(dataset_json):
+        rw = _enforce_nibabel_for_regression(file_ending, rw)
         compute_regression_metrics_on_folder(folder_ref, folder_pred, output_file, rw, file_ending, num_processes)
         return
 
