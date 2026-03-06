@@ -13,6 +13,10 @@ __pycache__/
 nnUNet_raw/
 .venv_sweepplots
 .vscode
+nnUNet_results/
+data/
+eval/
+
 
 # 忽略 Mac 系统文件
 .DS_Store
