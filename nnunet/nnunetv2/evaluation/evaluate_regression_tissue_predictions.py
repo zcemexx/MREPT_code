@@ -59,6 +59,15 @@ def evaluate_regression_tissue_predictions_entry_point():
         residual_limit=args.residual_limit,
         slice_axis=args.slice_axis,
     )
+    case_counts = summary.get("case_counts", {})
+    print(
+        "Regression tissue eval case counts: "
+        f"evaluated={case_counts.get('evaluated_cases', 0)}, "
+        f"missing_tissue={len(case_counts.get('missing_tissue_cases', []))}, "
+        f"ref_only={len(case_counts.get('ref_only_cases', []))}, "
+        f"pred_only={len(case_counts.get('pred_only_cases', []))}"
+    )
+
     ok_cases = summary["case_counts"]["status_counts"].get("ok", 0)
     warning_cases = summary["case_counts"]["status_counts"].get("warning_alignment", 0)
     if ok_cases + warning_cases == 0:

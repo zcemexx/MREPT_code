@@ -33,7 +33,7 @@ export nnUNet_results="${nnUNet_results:-$PROJECT_DIR/nnUNet_results}"
 
 DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
-TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad_regfix}"
+TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_regfix}"
 PLANS="${PLANS:-nnResUNetPlans}"
 FOLDS="${FOLDS:-0 1 2 3 4}"
 CHECKPOINT="${CHECKPOINT:-checkpoint_best.pth}"
@@ -126,6 +126,7 @@ nvidia-smi || true
 echo "=== nnUNet local predict finished ==="
 
 #how to run:
+#source /home/linux1917366562/nnunet_env/bin/activate
 #cd /home/linux1917366562/MREPT_code
 #INPUT_DIR=/home/linux1917366562/MREPT_code/data/M6 \
 #OUTPUT_DIR=/home/linux1917366562/MREPT_code/preds/5f \

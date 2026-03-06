@@ -202,6 +202,59 @@ class RegressionTissueMetricsTests(unittest.TestCase):
                 saved = json.load(f)
             self.assertEqual(saved["selection_metric"]["name"], "Global.MAE")
             self.assertEqual(len(saved["metric_per_case"]), 1)
+            self.assertEqual(saved["case_counts"]["expected_cases"], 1)
+            self.assertEqual(saved["case_counts"]["predicted_cases"], 1)
+            self.assertEqual(saved["case_counts"]["evaluated_cases"], 1)
+            self.assertEqual(saved["case_counts"]["ref_only_cases"], [])
+            self.assertEqual(saved["case_counts"]["pred_only_cases"], [])
+            self.assertEqual(saved["case_counts"]["missing_tissue_cases"], [])
+
+    def test_folder_evaluation_only_reports_pred_ref_intersection(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            folder_ref = tmp / "labelsTr"
+            folder_pred = tmp / "pred"
+            folder_images = tmp / "imagesTr"
+            folder_ref.mkdir()
+            folder_pred.mkdir()
+            folder_images.mkdir()
+
+            arr = np.ones((2, 2, 2), dtype=np.float32)
+            _write_fake_case(folder_ref / "CaseA.nii.gz", arr)
+            _write_fake_case(folder_ref / "CaseB.nii.gz", arr)
+            _write_fake_case(folder_pred / "CaseA.nii.gz", arr)
+            _write_fake_case(folder_pred / "CaseC.nii.gz", arr)
+            # Intentionally omit CaseA tissue mask to force missing_tissue_mask
+
+            out_json = tmp / "out" / "summary.json"
+            summary = compute_regression_metrics_on_folder_with_tissues(
+                folder_ref=str(folder_ref),
+                folder_pred=str(folder_pred),
+                folder_images=str(folder_images),
+                output_file=str(out_json),
+                image_reader_writer=FakeReaderWriter(),
+                file_ending=".nii.gz",
+                num_processes=1,
+                include_gradient_mae=True,
+                include_pearson_r=True,
+                plots_dir=None,
+                boundary_width=1,
+                residual_limit=5,
+            )
+
+            self.assertEqual(summary["case_counts"]["expected_cases"], 1)
+            self.assertEqual(summary["case_counts"]["predicted_cases"], 2)
+            self.assertEqual(summary["case_counts"]["evaluated_cases"], 1)
+            self.assertEqual(summary["case_counts"]["ref_only_cases"], ["CaseB"])
+            self.assertEqual(summary["case_counts"]["pred_only_cases"], ["CaseC"])
+            self.assertEqual(summary["case_counts"]["missing_tissue_cases"], ["CaseA"])
+            self.assertEqual(summary["case_counts"]["status_counts"].get("missing_tissue_mask"), 1)
+            self.assertEqual([c["case_id"] for c in summary["metric_per_case"]], ["CaseA"])
+            self.assertEqual(summary["metric_per_case"][0]["status"], "missing_tissue_mask")
+
+            self.assertTrue((out_json.parent / "cases" / "CaseA" / "case_report.json").exists())
+            self.assertFalse((out_json.parent / "cases" / "CaseB" / "case_report.json").exists())
+            self.assertFalse((out_json.parent / "cases" / "CaseC" / "case_report.json").exists())
 
 
 if __name__ == "__main__":
