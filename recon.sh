@@ -20,7 +20,7 @@ LOG_DIR="${LOG_DIR:-/home/zcemexx/Scratch/logs}"
 mkdir -p "$LOG_DIR"
 
 PHASE5_ROOT="${PHASE5_ROOT:-/home/zcemexx/Scratch/outputs/phase5}"
-RADIUS_PRED_ROOT="${RADIUS_PRED_ROOT:-$/home/zcemexx/Scratch/pred/preds_local/mae/5f}"
+RADIUS_PRED_ROOT="${RADIUS_PRED_ROOT:-/home/zcemexx/Scratch/pred/preds_local/mae/5f}"
 RECON_INPLACE_IO="${RECON_INPLACE_IO:-false}"
 RECON_OUT_ROOT="${RECON_OUT_ROOT:-/home/zcemexx/Scratch/outputs/phase5_sigma_recon}"
 
