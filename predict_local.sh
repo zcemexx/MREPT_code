@@ -35,7 +35,7 @@ DATASET_ID="${DATASET_ID:-1}"
 CONFIG="${CONFIG:-3d_fullres}"
 TRAINER="${TRAINER:-nnUNetTrainerMRCT_mae_grad_regfix}"
 PLANS="${PLANS:-nnResUNetPlans}"
-FOLDS="${FOLDS:-0}"
+FOLDS="${FOLDS:-0 1 2 3 4}"
 CHECKPOINT="${CHECKPOINT:-checkpoint_best.pth}"
 REC_MODE="${REC_MODE:-gaussian}"
 STEP_SIZE="${STEP_SIZE:-0.3}"
@@ -124,3 +124,9 @@ nvidia-smi || true
   $EXTRA_FLAGS
 
 echo "=== nnUNet local predict finished ==="
+
+#how to run:
+#cd /home/linux1917366562/MREPT_code
+#INPUT_DIR=/home/linux1917366562/MREPT_code/data/M6 \
+#OUTPUT_DIR=/home/linux1917366562/MREPT_code/preds/5f \
+#bash predict_local.sh
