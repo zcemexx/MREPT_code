@@ -162,3 +162,11 @@ python -m nnunetv2.evaluation.evaluate_regression_tissue_predictions \
   --file-ending .nii.gz \
   --tissue-channel-suffix _0001 \
   --num-processes 8
+
+   623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:04:27 Bran@node-t00a-006.myriad.ucl.    16 2
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:13:05 Bran@node-d00a-249.myriad.ucl.    16 3
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:54:50 Bran@node-d00a-029                16 4
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 02:06:01 Bran@node-d00a-016                16 5
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 02:47:34 Bran@node-d00a-154.myriad.ucl.    16 6
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 03:08:28 Bran@node-t00a-001.myriad.ucl.    16 7
+ 623985 2.15519 eptRecon   zcemexx      qw    03/06/2026 21:49:59                                   16 8
