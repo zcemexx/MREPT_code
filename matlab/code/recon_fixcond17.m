@@ -1,8 +1,8 @@
 %% recon_fixcond17.m
 % Fixed-kernel conductivity reconstruction from phase5 noisy MAT files.
 % - Input:  <PHASE5_ROOT>/M*/SNR*/noisy_phase_SNRxxx.mat
-% - Output: <PHASE5_ROOT>/M*/SNR*/M*_SNR*_fixcond.nii.gz
-% - Kernel: kDiffSize = [17 17 17] (Laplacian-form path: no kIntegralSize)
+% - Output: <PHASE5_ROOT>/M*/SNR*/M*_SNR*_fixcond<radius>.nii.gz
+% - Kernel: kDiffSize is defined in params below (Laplacian-form path: no kIntegralSize)
 %
 % Modes:
 % - If SGE_TASK_ID is set: run one mapped (case, snr) pair only.
@@ -42,8 +42,9 @@ end
 params = struct();
 params.B0 = 3;
 params.VoxelSize = [1 1 1];
-params.kDiffSize = [17 17 17];
+params.kDiffSize = [35 35 35];
 estimate_noise = true;
+radius_tag = derive_radius_tag(params);
 
 total_run = 0;
 total_ok = 0;
@@ -52,10 +53,11 @@ total_fail = 0;
 for ii = run_indices
     total_run = total_run + 1;
     task = tasks(ii);
+    out_nii = build_out_nii(task.case_name, task.snr_tag, task.snr_path, radius_tag);
 
     fprintf('\n[RUN ] (%d/%d) %s %s\n', total_run, numel(run_indices), task.case_name, task.snr_tag);
     fprintf('      mat: %s\n', task.mat_path);
-    fprintf('      out: %s\n', task.out_nii);
+    fprintf('      out: %s\n', out_nii);
 
     try
         [phase_map, mag, seg] = load_inputs_from_mat(task.mat_path);
@@ -73,9 +75,9 @@ for ii = run_indices
         cond = single(cond);
         cond(cond < 0 | cond > 10) = NaN;
 
-        save_nii_gz(cond, task.out_nii); % overwrite by design
+        save_nii_gz(cond, out_nii); % overwrite by design
         total_ok = total_ok + 1;
-        fprintf('[ OK ] %s\n', task.out_nii);
+        fprintf('[ OK ] %s\n', out_nii);
     catch ME
         total_fail = total_fail + 1;
         fprintf(2, '[FAIL] %s %s: %s\n', task.case_name, task.snr_tag, error_status_text(ME));
@@ -100,7 +102,7 @@ case_dirs = case_dirs([case_dirs.isdir]);
 case_dirs = case_dirs(~startsWith({case_dirs.name}, '.'));
 case_dirs = sort_dirs_by_number(case_dirs, '^M(\d+)$');
 
-tasks = struct('case_name', {}, 'snr_tag', {}, 'mat_path', {}, 'snr_path', {}, 'out_nii', {});
+tasks = struct('case_name', {}, 'snr_tag', {}, 'mat_path', {}, 'snr_path', {});
 
 for ic = 1:numel(case_dirs)
     case_name = case_dirs(ic).name;
@@ -121,15 +123,36 @@ for ic = 1:numel(case_dirs)
             continue;
         end
 
-        out_nii = fullfile(snr_path, sprintf('%s_%s_fixcond.nii.gz', case_name, snr_tag));
         tasks(end+1) = struct( ... %#ok<AGROW>
             'case_name', case_name, ...
             'snr_tag', snr_tag, ...
             'mat_path', mat_path, ...
-            'snr_path', snr_path, ...
-            'out_nii', out_nii);
+            'snr_path', snr_path);
     end
 end
+end
+
+function out_nii = build_out_nii(case_name, snr_tag, snr_path, radius_tag)
+out_nii = fullfile(snr_path, sprintf('%s_%s_fixcond%s.nii.gz', case_name, snr_tag, radius_tag));
+end
+
+function radius_tag = derive_radius_tag(params)
+if ~isfield(params, 'kDiffSize') || isempty(params.kDiffSize)
+    error('missing_kDiffSize: params.kDiffSize is required to build output filename.');
+end
+
+kdiff = double(params.kDiffSize(:)');
+if any(mod(kdiff, 2) == 0)
+    kdiff = 2 * floor(kdiff ./ 2) + 1;
+end
+
+radius_vox = (kdiff - 1) ./ 2;
+if all(abs(radius_vox - radius_vox(1)) < 1e-9)
+    radius_tag = sprintf('%g', radius_vox(1));
+else
+    radius_tag = sprintf('%gx%gx%g', radius_vox(1), radius_vox(2), radius_vox(3));
+end
+radius_tag = strrep(radius_tag, '.', 'p');
 end
 
 function out = sort_dirs_by_number(in_dirs, pattern)
