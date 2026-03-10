@@ -1,0 +1,108 @@
+{
+  "affine_untrusted_after_transpose": false,
+  "axis_swap_detected": false,
+  "boundary_metrics": {
+    "BoundaryVoxelCount": 530845,
+    "Boundary_Acc_1": 0.22467198523109383,
+    "Boundary_Acc_3": 0.4230293211766146,
+    "Boundary_Acc_5": 0.5487364484924978,
+    "Boundary_Gradient_MAE": 7.5920155234148545,
+    "Boundary_MAE": 8.345928192138672,
+    "Boundary_Pearson_R": 0.11379145947684809,
+    "Boundary_RMSE": 11.85572744775409,
+    "Interior_MAE": 7.341560363769531,
+    "Interior_RMSE": 10.895252180677893,
+    "Status": "ok"
+  },
+  "case_id": "M6_SNR030",
+  "paths": {},
+  "residual_distribution": {
+    "Histogram_Counts": [
+      402429,
+      58070,
+      74081,
+      97608,
+      126628,
+      172009,
+      134692,
+      116324,
+      92678,
+      69072,
+      405314
+    ],
+    "Histogram_Edges": [
+      -5.5,
+      -4.5,
+      -3.5,
+      -2.5,
+      -1.5,
+      -0.5,
+      0.5,
+      1.5,
+      2.5,
+      3.5,
+      4.5,
+      5.5
+    ],
+    "Residual_Mean": -0.017530398443341255,
+    "Residual_Median": 0.0,
+    "Residual_STD": 11.19548511505127,
+    "Residual_Skewness": -0.06455545872449875
+  },
+  "status": "ok",
+  "tissue_metrics": {
+    "CSF": {
+      "Acc_1": 0.2273337151914129,
+      "Acc_3": 0.44325091999027044,
+      "Acc_5": 0.5893940226133216,
+      "Gradient_MAE": 4.796060225408613,
+      "MAE": 7.431858062744141,
+      "MSE": 118.31189727783203,
+      "Pearson_R": 0.16196552655936342,
+      "RMSE": 10.877127252994333,
+      "TotalVoxelCount": 509788,
+      "ValidRatio": 1.0,
+      "ValidVoxelCount": 509788
+    },
+    "GM": {
+      "Acc_1": 0.24513024094772246,
+      "Acc_3": 0.43762980116627415,
+      "Acc_5": 0.545416952196413,
+      "Gradient_MAE": 6.772047454076313,
+      "MAE": 8.773401260375977,
+      "MSE": 155.8235321044922,
+      "Pearson_R": 0.09727294790805453,
+      "RMSE": 12.482929628276056,
+      "TotalVoxelCount": 761742,
+      "ValidRatio": 1.0,
+      "ValidVoxelCount": 761742
+    },
+    "Global": {
+      "Acc_1": 0.2477716056618284,
+      "Acc_3": 0.4654455216263891,
+      "Acc_5": 0.5922991814878452,
+      "Gradient_MAE": 5.9702506242236355,
+      "MAE": 7.646415710449219,
+      "MSE": 125.33918762207031,
+      "Pearson_R": 0.15023131426795144,
+      "RMSE": 11.195498542810423,
+      "TotalVoxelCount": 1748905,
+      "ValidRatio": 1.0,
+      "ValidVoxelCount": 1748905
+    },
+    "WM": {
+      "Acc_1": 0.27381199266823775,
+      "Acc_3": 0.5335323383084577,
+      "Acc_5": 0.6702110500130924,
+      "Gradient_MAE": 4.519276742888333,
+      "MAE": 6.077224254608154,
+      "MSE": 84.20010375976562,
+      "Pearson_R": 0.08086235675708808,
+      "RMSE": 9.176061451394363,
+      "TotalVoxelCount": 477375,
+      "ValidRatio": 1.0,
+      "ValidVoxelCount": 477375
+    }
+  },
+  "warnings": []
+}

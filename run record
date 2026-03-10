@@ -19,6 +19,7 @@ qsub -t 9-136 fixcond17.sh
  515449 0.00000 nnUTrain   zcemexx      hqw   02/16/2026 21:55:06                                    8 2-5:1
  515536 0.00000 eptPhase5  zcemexx      qw    02/16/2026 22:43:51  
  rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
+rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
   zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/exp \
   ~/Documents/mresult/outputs
 
@@ -156,15 +157,17 @@ zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/nnUNet_results/Dataset001_EPT/
 /home/linux1917366562/MREPT_code/nnUNet_results/
 
 scp -r -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk \
-zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr \
-/home/linux1917366562/MREPT_code/data/exps
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr/M6_SNR010.nii.gz \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr/M6_SNR150.nii.gz \
+/home/linux1917366562/MREPT_code/data/others
 
-/home/linux1917366562/MREPT_code/data/M6
+/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr
+/home/linux1917366562/MREPT_code/data/others
 
 
 source /home/linux1917366562/nnunet_env/bin/activate
 cd /home/linux1917366562/MREPT_code
-INPUT_DIR=/home/linux1917366562/MREPT_code/data/M6 \
+INPUT_DIR=/home/linux1917366562/MREPT_code/data/exps/imagesTr \
 OUTPUT_DIR=/home/linux1917366562/MREPT_code/preds_local/mae/5f \
 bash predict_local.sh
 
@@ -222,3 +225,20 @@ zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_H
 637230 3.41498 fixcond17  zcemexx      r     03/10/2026 16:23:23 Bran@node-d00a-080.myriad.ucl.     8 25
  637230 0.00000 fixcond17  zcemexx      qw    03/10/2026 12:22:46                                    8 26
  637230 0.00000 fixcond17  zcemexx      hqw   03/10/2026 12:22:46                                    8 27-136:1
+   623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:04:27 Bran@node-t00a-006.myriad.ucl.    16 2
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:13:05 Bran@node-d00a-249.myriad.ucl.    16 3
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:54:50 Bran@node-d00a-029                16 4
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 02:06:01 Bran@node-d00a-016                16 5
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 02:47:34 Bran@node-d00a-154.myriad.ucl.    16 6
+ 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 03:08:28 Bran@node-t00a-001.myriad.ucl.    16 7
+ 623985 2.15519 eptRecon   zcemexx      qw    03/06/2026 21:49:59                                   16 8
+
+ /home/linux1917366562/MREPT_code/nnunet/.venv/bin/python \
+ /home/linux1917366562/MREPT_code/matlab/others/prepare_phi0_seg_inputs.py \
+ --mode single \
+ --phi0 /home/linux1917366562/MREPT_code/data/3T_in-vivo_3DGRE_Head_Neck_repeatibility/phi0.nii.gz \
+ --seg /home/linux1917366562/MREPT_code/data/3T_in-vivo_3DGRE_Head_Neck_repeatibility/segmentation.nii.gz
+
+ INPUT_DIR=/home/linux1917366562/MREPT_code/data/3T_in-vivo_3DGRE_Head_Neck_repeatibility \
+OUTPUT_DIR=/home/linux1917366562/MREPT_code/data/3T_in-vivo_3DGRE_Head_Neck_repeatibility/ \
+bash predict_local.sh

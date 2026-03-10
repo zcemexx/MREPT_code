@@ -15,7 +15,6 @@ nnUNet_raw/
 .vscode
 nnUNet_results/
 data/
-eval/
 
 # 忽略 Mac 系统文件
 .DS_Store
