@@ -1,7 +1,7 @@
 %% recon_fixcond17.m
 % Fixed-kernel conductivity reconstruction from phase5 noisy MAT files.
 % - Input:  <PHASE5_ROOT>/M*/SNR*/noisy_phase_SNRxxx.mat
-% - Output: <PHASE5_ROOT>/M*/SNR*/M*_SNR*_fixcond<radius>.nii.gz
+% - Output: <PHASE5_ROOT>/M*/SNR*/cond_fixr17.nii.gz
 % - Kernel: kDiffSize is defined in params below (Laplacian-form path: no kIntegralSize)
 %
 % Modes:
@@ -132,8 +132,8 @@ for ic = 1:numel(case_dirs)
 end
 end
 
-function out_nii = build_out_nii(case_name, snr_tag, snr_path, radius_tag)
-out_nii = fullfile(snr_path, sprintf('%s_%s_fixcond%s.nii.gz', case_name, snr_tag, radius_tag));
+function out_nii = build_out_nii(~, ~, snr_path, ~)
+out_nii = fullfile(snr_path, 'cond_fixr17.nii.gz');
 end
 
 function radius_tag = derive_radius_tag(params)
