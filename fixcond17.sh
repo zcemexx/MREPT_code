@@ -2,7 +2,7 @@
 #$ -S /bin/bash
 #$ -N fixcond17
 #$ -l h_rt=02:59:00
-#$ -l mem=8G
+#$ -l mem=5G
 #$ -l tmpfs=8G
 #$ -pe smp 8
 #$ -wd /home/zcemexx/Scratch
