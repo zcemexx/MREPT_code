@@ -1,10 +1,10 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N eptRecon
-#$ -l h_rt=12:59:00
-#$ -l mem=5G
+#$ -l h_rt=11:59:00
+#$ -l mem=7G
 #$ -l tmpfs=16G
-#$ -pe smp 16
+#$ -pe smp 8
 #$ -wd /myriadfs/home/zcemexx/Scratch
 #$ -o /myriadfs/home/zcemexx/Scratch/logs/
 #$ -j y
