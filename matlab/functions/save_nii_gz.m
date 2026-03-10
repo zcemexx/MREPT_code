@@ -24,7 +24,7 @@ imgToWrite = normalize_img_type(img);
 if exist('nii_tool', 'file') == 2
     try
         nii = nii_tool('init', imgToWrite);
-        nii.hdr.pixdim(2:4) = [1 1 1];
+        nii = set_identity_geometry_niitool(nii);
         nii.img = imgToWrite;
         nii_tool('save', nii, niiPath); % write .nii first
         if isGz
@@ -60,6 +60,7 @@ end
 
 niiFallback = make_nii(single(imgToWrite));
 niiFallback.img = imgToWrite;
+niiFallback = set_identity_geometry_nifti2014(niiFallback);
 save_nii(niiFallback, niiPath);
 
 if isGz
@@ -74,6 +75,59 @@ elseif islogical(imgIn)
     imgOut = uint8(imgIn);
 else
     imgOut = single(imgIn);
+end
+end
+
+function nii = set_identity_geometry_niitool(nii)
+% Ensure explicit, valid affine metadata so downstream tools don't infer fallback coordinates.
+if ~isfield(nii, 'hdr') || ~isstruct(nii.hdr)
+    return;
+end
+
+if isfield(nii.hdr, 'pixdim') && numel(nii.hdr.pixdim) >= 4
+    nii.hdr.pixdim(2:4) = single([1 1 1]);
+end
+if isfield(nii.hdr, 'qform_code')
+    nii.hdr.qform_code = int16(1);
+end
+if isfield(nii.hdr, 'sform_code')
+    nii.hdr.sform_code = int16(1);
+end
+if isfield(nii.hdr, 'quatern_bcd')
+    nii.hdr.quatern_bcd = single([0 0 0]);
+end
+if isfield(nii.hdr, 'qoffset_xyz')
+    nii.hdr.qoffset_xyz = single([0; 0; 0]);
+end
+if isfield(nii.hdr, 'sform_mat')
+    nii.hdr.sform_mat = single([ ...
+        1 0 0 0; ...
+        0 1 0 0; ...
+        0 0 1 0 ...
+    ]);
+end
+end
+
+function nii = set_identity_geometry_nifti2014(nii)
+% Same intent as set_identity_geometry_niitool for NIfTI_20140122 structs.
+if ~isfield(nii, 'hdr') || ~isstruct(nii.hdr)
+    return;
+end
+if isfield(nii.hdr, 'dime') && isfield(nii.hdr.dime, 'pixdim') && numel(nii.hdr.dime.pixdim) >= 4
+    nii.hdr.dime.pixdim(2:4) = [1 1 1];
+end
+if isfield(nii.hdr, 'hist') && isstruct(nii.hdr.hist)
+    nii.hdr.hist.qform_code = 1;
+    nii.hdr.hist.sform_code = 1;
+    nii.hdr.hist.quatern_b = 0;
+    nii.hdr.hist.quatern_c = 0;
+    nii.hdr.hist.quatern_d = 0;
+    nii.hdr.hist.qoffset_x = 0;
+    nii.hdr.hist.qoffset_y = 0;
+    nii.hdr.hist.qoffset_z = 0;
+    nii.hdr.hist.srow_x = [1 0 0 0];
+    nii.hdr.hist.srow_y = [0 1 0 0];
+    nii.hdr.hist.srow_z = [0 0 1 0];
 end
 end
 

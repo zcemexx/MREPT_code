@@ -4,7 +4,7 @@ import argparse
 
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.evaluation.regression_tissue_metrics import compute_regression_metrics_on_folder_with_tissues
-from nnunetv2.imageio.nibabel_reader_writer import NibabelIO
+from nnunetv2.imageio.reader_writer_registry import determine_reader_writer_from_file_ending
 
 
 def evaluate_regression_tissue_predictions_entry_point():
@@ -36,12 +36,12 @@ def evaluate_regression_tissue_predictions_entry_point():
     parser.add_argument("--residual-limit", required=False, default=5, type=int, help="clipping limit for residual histogram")
     args = parser.parse_args()
 
-    if args.file_ending.lower() not in NibabelIO.supported_file_endings:
-        raise ValueError(
-            f"Regression tissue evaluation is fixed to NibabelIO, unsupported file ending: {args.file_ending}. "
-            f"Supported endings: {NibabelIO.supported_file_endings}"
-        )
-    image_reader_writer = NibabelIO()
+    image_reader_writer = determine_reader_writer_from_file_ending(
+        args.file_ending,
+        example_file=None,
+        allow_nonmatching_filename=False,
+        verbose=False,
+    )()
 
     summary = compute_regression_metrics_on_folder_with_tissues(
         folder_ref=args.folder_ref,
@@ -59,15 +59,6 @@ def evaluate_regression_tissue_predictions_entry_point():
         residual_limit=args.residual_limit,
         slice_axis=args.slice_axis,
     )
-    case_counts = summary.get("case_counts", {})
-    print(
-        "Regression tissue eval case counts: "
-        f"evaluated={case_counts.get('evaluated_cases', 0)}, "
-        f"missing_tissue={len(case_counts.get('missing_tissue_cases', []))}, "
-        f"ref_only={len(case_counts.get('ref_only_cases', []))}, "
-        f"pred_only={len(case_counts.get('pred_only_cases', []))}"
-    )
-
     ok_cases = summary["case_counts"]["status_counts"].get("ok", 0)
     warning_cases = summary["case_counts"]["status_counts"].get("warning_alignment", 0)
     if ok_cases + warning_cases == 0:

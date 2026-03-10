@@ -699,12 +699,10 @@ def _mean_ignore_nan(values: List[float]) -> float:
 
 def _build_summary(
     case_results: List[dict],
-    ref_only_cases: List[str],
-    pred_only_cases: List[str],
-    missing_tissue_cases: List[str],
+    missing_cases: List[str],
+    unexpected_cases: List[str],
     expected_case_count: int,
     predicted_case_count: int,
-    evaluated_case_count: int,
 ) -> dict:
     foreground_mean = {}
     for tissue_name in TISSUE_ORDER:
@@ -723,14 +721,8 @@ def _build_summary(
         "case_counts": {
             "expected_cases": expected_case_count,
             "predicted_cases": predicted_case_count,
-            "evaluated_cases": evaluated_case_count,
-            # Backward-compatible aliases:
-            "missing_cases": ref_only_cases,
-            "unexpected_cases": pred_only_cases,
-            # Preferred explicit fields:
-            "ref_only_cases": ref_only_cases,
-            "pred_only_cases": pred_only_cases,
-            "missing_tissue_cases": missing_tissue_cases,
+            "missing_cases": missing_cases,
+            "unexpected_cases": unexpected_cases,
             "status_counts": status_counts,
         },
         "metric_per_case": deepcopy(case_results),
@@ -801,25 +793,22 @@ def compute_regression_metrics_on_folder_with_tissues(
     files_pred = sorted(subfiles(folder_pred, suffix=file_ending, join=False))
     ref_cases = {f[:-len(file_ending)] for f in files_ref}
     pred_cases = {f[:-len(file_ending)] for f in files_pred}
-    eval_cases = sorted(ref_cases & pred_cases)
-    ref_only_cases = sorted(ref_cases - pred_cases)
-    pred_only_cases = sorted(pred_cases - ref_cases)
-    expected_case_count = len(eval_cases)
-    predicted_case_count = len(pred_cases)
-    evaluated_case_count = len(eval_cases)
+    unexpected_cases = sorted(pred_cases - ref_cases)
+    expected_case_count = len(ref_cases)
+    predicted_case_count = len(ref_cases & pred_cases)
 
     case_results: List[dict] = []
-    missing_tissue_cases: List[str] = []
+    missing_cases: List[str] = []
     tasks: List[dict] = []
-    for case_id in eval_cases:
+    for case_id in sorted(ref_cases):
         reference_file = join(folder_ref, case_id + file_ending)
         prediction_file = join(folder_pred, case_id + file_ending)
         tissue_mask_file = join(folder_images, f"{case_id}{tissue_channel_suffix}{file_ending}")
         if not isfile(prediction_file):
-            # Defensive fallback; eval_cases should guarantee this is present.
+            missing_cases.append(case_id)
+            case_results.append(_build_case_failure(case_id, "missing_prediction"))
             continue
         if not isfile(tissue_mask_file):
-            missing_tissue_cases.append(case_id)
             case_results.append(_build_case_failure(case_id, "missing_tissue_mask"))
             continue
         tasks.append(
@@ -890,12 +879,10 @@ def compute_regression_metrics_on_folder_with_tissues(
     wide_rows = _build_wide_rows(long_rows)
     summary = _build_summary(
         case_results,
-        ref_only_cases,
-        pred_only_cases,
-        missing_tissue_cases,
+        missing_cases,
+        unexpected_cases,
         expected_case_count=expected_case_count,
         predicted_case_count=predicted_case_count,
-        evaluated_case_count=evaluated_case_count,
     )
 
     long_fields = ["Case", "Tissue", *LONG_METRIC_KEYS, "Status"]

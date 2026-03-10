@@ -1,4 +1,18 @@
+## 模型预测重建
+Saved conductivity map: /home/zcemexx/Scratch/outputs/phase5_sigma_recon/M6/SNR150/M6_SNR150_sigma_recon.nii.gz
+> output/phase5中。nii文件都是上一版model预测的，都不需要
+  M6_SNR010.nii.gz（radius map）
+  M6_SNR010_sigma_recon.nii.gz（reconstructed cond） 
+  M6_SNR010_fixcond.nii.gz （8.5mm半径）
+
+predicted map: /home/zcemexx/Scratch/pred/preds_local/mae/5f
+
+检查
+1 phase5 正确cond17重建
+2 invivo fix+map OUT_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/cond_fixrad17_kdiff35.nii.gz
 ID 
+
+qsub -t 9-136 fixcond17.sh
 -----------------------------------------------------------------------------------------------------------------
  512029 3.23034 eptPhase5  zcemexx      qw    02/16/2026 03:14:32                                   32 1
  515449 2.55303 nnUTrain   zcemexx      qw    02/16/2026 21:55:06                                    8 1
@@ -163,10 +177,48 @@ python -m nnunetv2.evaluation.evaluate_regression_tissue_predictions \
   --tissue-channel-suffix _0001 \
   --num-processes 8
 
-   623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:04:27 Bran@node-t00a-006.myriad.ucl.    16 2
- 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:13:05 Bran@node-d00a-249.myriad.ucl.    16 3
- 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 01:54:50 Bran@node-d00a-029                16 4
- 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 02:06:01 Bran@node-d00a-016                16 5
- 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 02:47:34 Bran@node-d00a-154.myriad.ucl.    16 6
- 623985 2.23638 eptRecon   zcemexx      r     03/07/2026 03:08:28 Bran@node-t00a-001.myriad.ucl.    16 7
- 623985 2.15519 eptRecon   zcemexx      qw    03/06/2026 21:49:59                                   16 8
+  rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/outputs/phase5/M6/SNR010/M6_SNR010_fixcond.nii.gz \
+~/Documents/mresult/
+
+/home/zcemexx/Scratch/outputs/phase5/M6/SNR010/M6_SNR010_sigma_recon.nii.gz
+
+参考/Users/apple/Documents/MREPT_code/matlab/code/sweep_radius_metrics_online.m的自动索引逻辑用/home/zcemexx/Scratch/outputs/phase5/M*/SNR*中的noisy_phase_SNR*.mat，写一个用17 17 17的固定differential kernel进行重建，生成nii.gz 电导率map的脚本
+
+magnitude_noisy (single, [256 256 160])
+phi0_noisy (single, [256 256 160])
+task_id (double, [1 1])
+this_snr (double, [1 1])
+tissueMask (uint8, [256 256 160])
+
+find /home/zcemexx/Scratch/outputs/phase5 -type f \( -name '*.nii' -o -name '*.nii.gz' \) -print
+
+~/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility
+qsub -t 1-8 recon.sh
+
+1. 放到/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/
+2. 提交作业B：radius map=M1_SNR030.nii.gz（输出 cond_pred_M1_SNR030.nii.gz），将A输出的文件名中的sigma也替换为cond
+3. recon_fixcond17的ESTIMATE_NOISE不是默认开启的吗？关闭会导致无法使用mag+seg重建吗
+
+ 635651 0.00000 fixcond17  zcemexx      qw    03/10/2026 00:16:36                                    8 1
+ 635651 0.00000 fixcond17  zcemexx      hqw   03/10/2026 00:16:36                                    8 2-8:1
+ 635674 0.00000 invFixR17  zcemexx      qw    03/10/2026 00:25:10                                    8        
+ 635675 0.00000 invPredR   zcemexx      qw    03/10/2026 00:25:13  
+
+rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/outputs/phase5_sigma_recon/M6/SNR150/M6_SNR150_sigma_recon.nii.gz \
+~/Documents/mresult/tmp/
+
+rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/{cond_fixrad17_kdiff35.nii.gz,cond_pred_M1_SNR030.nii.gz} \
+~/Documents/mresult/tmp/
+
+1 电导率 ：pred_cond.nii.gz
+2 固定重建 ：cond_fixr17.nii.gz
+3 预测map ：pred_map.nii.gz
+4 最佳map ：pred_kernel_map.mat
+5 最佳map condi： sigma_reconstructed.mat
+
+637230 3.41498 fixcond17  zcemexx      r     03/10/2026 16:23:23 Bran@node-d00a-080.myriad.ucl.     8 25
+ 637230 0.00000 fixcond17  zcemexx      qw    03/10/2026 12:22:46                                    8 26
+ 637230 0.00000 fixcond17  zcemexx      hqw   03/10/2026 12:22:46                                    8 27-136:1
