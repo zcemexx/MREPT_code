@@ -67,15 +67,14 @@ def rewrite_identity(src: Path, dst: Path) -> None:
 
     img = nib.load(str(src))
     data = np.asanyarray(img.dataobj)
-    hdr = img.header.copy()
-    aff = np.eye(4, dtype=np.float32)
 
-    out = nib.Nifti1Image(data, aff, header=hdr)
-
+    # Build diagonal affine from actual voxel sizes so zooms are preserved.
+    # Using np.eye(4) would silently force 1 mm spacing for all axes.
     zooms = img.header.get_zooms()
-    if len(zooms) >= 3:
-        out.header.set_zooms(tuple(float(abs(z)) for z in zooms[:3]))
+    vox = [float(abs(z)) for z in zooms[:3]] if len(zooms) >= 3 else [1.0, 1.0, 1.0]
+    aff = np.diag([*vox, 1.0]).astype(np.float64)
 
+    out = nib.Nifti1Image(data, aff)
     out.set_qform(aff, code=1)
     out.set_sform(aff, code=1)
     nib.save(out, str(dst))

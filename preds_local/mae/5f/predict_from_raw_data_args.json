@@ -1,6 +1,6 @@
 {
     "folder_with_segs_from_prev_stage": null,
-    "list_of_lists_or_source_folder": "/home/linux1917366562/MREPT_code/data/exps/imagesTr",
+    "list_of_lists_or_source_folder": "/home/linux1917366562/MREPT_code/data/M6",
     "num_parts": 1,
     "num_processes_preprocessing": 2,
     "num_processes_segmentation_export": 2,
