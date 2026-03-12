@@ -44,6 +44,16 @@ NPP="${NPP:-2}"
 NPS="${NPS:-2}"
 EXTRA_FLAGS="${EXTRA_FLAGS:-}"
 
+# Geometry preflight config.
+# - off: skip geometry checks/fixes.
+# - check: inspect files and fail if undefined geometry is detected.
+# - fix-undefined: rewrite only qform=0 && sform=0 files.
+# - fix-all: rewrite all matched files.
+NIFTI_GEOM_PREFLIGHT="${NIFTI_GEOM_PREFLIGHT:-check}"
+NIFTI_GEOM_PATTERN="${NIFTI_GEOM_PATTERN:-*.nii.gz}"
+NIFTI_GEOM_FAIL_ON_UNDEFINED="${NIFTI_GEOM_FAIL_ON_UNDEFINED:-true}"
+NIFTI_GEOM_FAIL_ON_NO_MATCH="${NIFTI_GEOM_FAIL_ON_NO_MATCH:-true}"
+
 MODEL_IDENTIFIER="${TRAINER}__${PLANS}__${CONFIG}"
 MODEL_DIR="${MODEL_DIR:-}"
 if [[ -z "$MODEL_DIR" ]]; then
@@ -88,6 +98,13 @@ if [[ "$DEVICE" == "auto" ]]; then
   fi
 fi
 
+is_true() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 echo "python: $(which python || true)"
 python -V || true
 echo "nnUNet_raw=$nnUNet_raw"
@@ -99,6 +116,10 @@ echo "MODEL_DIR=$MODEL_DIR"
 echo "INPUT_DIR=$INPUT_DIR"
 echo "OUTPUT_DIR=$OUTPUT_DIR"
 echo "PREDICT_CMD=${PREDICT_CMD[*]}"
+echo "NIFTI_GEOM_PREFLIGHT=$NIFTI_GEOM_PREFLIGHT"
+echo "NIFTI_GEOM_PATTERN=$NIFTI_GEOM_PATTERN"
+echo "NIFTI_GEOM_FAIL_ON_UNDEFINED=$NIFTI_GEOM_FAIL_ON_UNDEFINED"
+echo "NIFTI_GEOM_FAIL_ON_NO_MATCH=$NIFTI_GEOM_FAIL_ON_NO_MATCH"
 
 test -d "$nnUNet_results"
 test -d "$INPUT_DIR"
@@ -106,6 +127,48 @@ test -d "$MODEL_DIR"
 test -f "$MODEL_DIR/plans.json"
 test -f "$MODEL_DIR/dataset.json"
 mkdir -p "$OUTPUT_DIR"
+
+GEOM_FIX_SCRIPT="$PROJECT_DIR/scripts/normalize_nifti_identity.py"
+if [[ ! -f "$GEOM_FIX_SCRIPT" ]]; then
+  echo "[ERROR] Missing geometry preflight script: $GEOM_FIX_SCRIPT"
+  exit 2
+fi
+
+# Run geometry preflight before nnUNet prediction to avoid affine ambiguity.
+case "$(printf '%s' "$NIFTI_GEOM_PREFLIGHT" | tr '[:upper:]' '[:lower:]')" in
+  off)
+    echo "[INFO] Geometry preflight disabled."
+    ;;
+  check)
+    PREFLIGHT_ARGS=(--input "$INPUT_DIR" --pattern "$NIFTI_GEOM_PATTERN" --action report)
+    if is_true "$NIFTI_GEOM_FAIL_ON_UNDEFINED"; then
+      PREFLIGHT_ARGS+=(--fail-on-undefined)
+    fi
+    if is_true "$NIFTI_GEOM_FAIL_ON_NO_MATCH"; then
+      PREFLIGHT_ARGS+=(--fail-on-no-match)
+    fi
+    python "$GEOM_FIX_SCRIPT" "${PREFLIGHT_ARGS[@]}"
+    ;;
+  fix-undefined)
+    PREFLIGHT_ARGS=(--input "$INPUT_DIR" --pattern "$NIFTI_GEOM_PATTERN" --action fix-undefined --inplace)
+    if is_true "$NIFTI_GEOM_FAIL_ON_NO_MATCH"; then
+      PREFLIGHT_ARGS+=(--fail-on-no-match)
+    fi
+    python "$GEOM_FIX_SCRIPT" "${PREFLIGHT_ARGS[@]}"
+    ;;
+  fix-all)
+    PREFLIGHT_ARGS=(--input "$INPUT_DIR" --pattern "$NIFTI_GEOM_PATTERN" --action fix-all --inplace)
+    if is_true "$NIFTI_GEOM_FAIL_ON_NO_MATCH"; then
+      PREFLIGHT_ARGS+=(--fail-on-no-match)
+    fi
+    python "$GEOM_FIX_SCRIPT" "${PREFLIGHT_ARGS[@]}"
+    ;;
+  *)
+    echo "[ERROR] Invalid NIFTI_GEOM_PREFLIGHT: $NIFTI_GEOM_PREFLIGHT"
+    echo "        Allowed values: off | check | fix-undefined | fix-all"
+    exit 2
+    ;;
+esac
 
 nvidia-smi || true
 
@@ -130,4 +193,5 @@ echo "=== nnUNet local predict finished ==="
 #cd /home/linux1917366562/MREPT_code
 #INPUT_DIR=/home/linux1917366562/MREPT_code/data/M6 \
 #OUTPUT_DIR=/home/linux1917366562/MREPT_code/preds/5f \
+#NIFTI_GEOM_PREFLIGHT=fix-undefined \
 #bash predict_local.sh
