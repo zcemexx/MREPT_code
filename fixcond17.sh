@@ -4,7 +4,7 @@
 #$ -l h_rt=02:59:00
 #$ -l mem=5G
 #$ -l tmpfs=8G
-#$ -pe smp 8
+#$ -pe smp 16
 #$ -wd /home/zcemexx/Scratch
 #$ -o /home/zcemexx/Scratch/logs/
 #$ -j y
@@ -85,14 +85,9 @@ fi
 line="$(sed -n "${TASK_ID}p" "$TASK_LIST")"
 case_name="$(basename "$(dirname "$line")")"
 snr_tag="$(basename "$line")"
-kdiff_size="$(sed -n 's/.*params\.kDiffSize *= *\[\([0-9][0-9]*\).*/\1/p' "$CODE_DIR/recon_fixcond17.m" | head -n 1 || true)"
-radius_tag="*"
-if [[ "$kdiff_size" =~ ^[0-9]+$ ]]; then
-    radius_tag="$(( (kdiff_size - 1) / 2 ))"
-fi
 echo "[RUN ] TASK $TASK_ID/$TASK_COUNT -> $case_name $snr_tag"
 echo "      input : $line/noisy_phase_${snr_tag}.mat"
-echo "      output: $line/${case_name}_${snr_tag}_fixcond${radius_tag}.nii.gz"
+echo "      output: $line/cond_fixr17.nii.gz"
 
 module purge
 module load matlab/full/r2023a/9.14
