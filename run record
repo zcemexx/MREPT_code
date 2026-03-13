@@ -276,7 +276,7 @@ cal_max / cal_min
 hot diff map（mae）
 
 rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
-zcemexx@myriad:/home/zcemexx/Scratch/outputs/phase5/M12/SNR010/noisy_phase_SNR010.mat \
+zcemexx@myriad:/home/zcemexx/Scratch/outputs/phase5_sigma_recon/M12/SNR010/M12_SNR010_sigma_recon.nii.gz \
 ~/Documents/mresult/tmp/
 
 Rewrite all files using an explicit target matrix:
@@ -288,3 +288,12 @@ Rewrite all files using an explicit target matrix:
 
 
 
+/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr/M8_SNR150.nii.gz
+
+find . -maxdepth 1 -mindepth 1 -type d -exec mv {} ./ \;
+
+sigma_reconstructed_cond_optimal.nii.gz
+
+scp -r -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk \
+/Users/apple/Documents/deeplc/UCLMRT/data/* \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/

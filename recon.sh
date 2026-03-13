@@ -130,7 +130,7 @@ while IFS= read -r snr_path; do
         mkdir -p "$out_dir"
     fi
 
-    out_nii="$out_dir/${case_name}_${snr_tag}_sigma_recon.nii.gz"
+    out_nii="$out_dir/${case_name}_${snr_tag}_cond_pred.nii.gz"
     printf '%s|%s|%s|%s|%s\n' "$case_name" "$snr_tag" "$mat_path" "$radius_path" "$out_nii" >> "$TASK_LIST"
 done < <(find "$PHASE5_ROOT" -mindepth 2 -maxdepth 2 -type d -name 'SNR*' | sort)
 
