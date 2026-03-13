@@ -70,6 +70,13 @@ Examples:
      --mat-key Segmentation \
      --complex-mode phase \
      --output-dtype uint8
+
+7) Name the output only by variable name:
+   nnunet/.venv/bin/python scripts/mat_to_nifti.py \
+     --input /Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy/M1.mat \
+     --mat-key B1minus_mag \
+     --complex-mode real \
+     --name iso
 """
 
 from __future__ import annotations
@@ -104,6 +111,7 @@ EXIT_GENERAL_ERROR = 1
 EXIT_SELECTION_ERROR = 2
 
 VALID_COMPLEX_MODES = ("phase", "magnitude", "real", "complex")
+VALID_NAME_MODES = ("default", "iso")
 VALID_OUTPUT_DTYPES = (
     "auto",
     "uint8",
@@ -162,6 +170,15 @@ def parse_args() -> argparse.Namespace:
         "--filename-template",
         default="{case_id}_{var_name}.nii.gz",
         help="Output filename template using {case_id} and {var_name}.",
+    )
+    p.add_argument(
+        "--name",
+        default="default",
+        choices=VALID_NAME_MODES,
+        help=(
+            "Output naming mode. default uses --filename-template. "
+            "iso writes filenames using only the variable name."
+        ),
     )
     p.add_argument(
         "--sform-matrix",
@@ -365,8 +382,11 @@ def prepare_array(array: np.ndarray, complex_mode: str, output_dtype_name: str) 
     )
 
 
-def build_output_name(case_id: str, var_name: str, template: str) -> str:
-    rendered = template.format(case_id=case_id, var_name=var_name)
+def build_output_name(case_id: str, var_name: str, template: str, name_mode: str) -> str:
+    if name_mode == "iso":
+        rendered = var_name
+    else:
+        rendered = template.format(case_id=case_id, var_name=var_name)
     name = Path(rendered).name
     if name != rendered:
         raise ConfigError("--filename-template must not create subdirectories.")
@@ -380,7 +400,12 @@ def resolve_output_path(variable: MatVariable, args: argparse.Namespace) -> Path
         base_dir = Path(args.output_dir)
     else:
         base_dir = variable.path.parent
-    output_name = build_output_name(variable.path.stem, variable.key, args.filename_template)
+    output_name = build_output_name(
+        variable.path.stem,
+        variable.key,
+        args.filename_template,
+        args.name,
+    )
     return base_dir / output_name
 
 
