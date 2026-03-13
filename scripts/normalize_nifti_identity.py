@@ -11,6 +11,14 @@ Key guarantees:
 Important scope:
 - This script rewrites NIfTI metadata/header geometry only.
 - Voxel indexing order and raw data values are not resampled or reoriented.
+- action process nii.gz files only
+- use --pattern '*.nii' to execute .nii files if needed.
+
+Matrix input:
+--sform-matrix identity
+--sform-matrix "1 0 0 0 0 1 0 0 0 0 1 0"
+--sform-matrix "1,0,0,10, 0,1,0,20, 0,0,1,30"
+--sform-matrix "1 0 0 10 0 1 0 20 0 0 1 30 0 0 0 1"
 
 How to use:
 1) Report only (fail if any undefined q/s form exists):

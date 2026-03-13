@@ -9,7 +9,25 @@ Important behavior:
 - Geometry defaults to identity sform and a qform with equivalent spatial meaning.
 - Complex handling is explicit via --complex-mode to avoid silently writing
   nnUNet-incompatible complex NIfTI files.
-- Real outputs are stored as float32; complex outputs are stored as complex64.
+- Output dtype is explicit via --output-dtype. The default value `auto`
+  preserves the script's previous behavior: real-valued outputs are written as
+  float32 and complex-valued outputs are written as complex64.
+- For complex-valued MATLAB arrays, --complex-mode controls the output:
+  - phase: store np.angle(array) as float32. This is the right choice when the
+    complex array represents a signal of the form magnitude * exp(1j * phase)
+    and the downstream model expects phase maps.
+  - magnitude: store np.abs(array) as float32. This is the right choice when
+    the downstream consumer expects an intensity-like image and phase is not
+    needed.
+  - real: store np.real(array) as float32. This is only appropriate when the
+    real component itself has a defined physical meaning; it is usually not a
+    substitute for phase.
+  - complex: preserve the complex values as complex64. This is useful for
+    archival or debugging, but is generally not compatible with nnUNet.
+- For real-valued MATLAB arrays, --complex-mode does not alter the values; they
+  are written as float32.
+- If you need to preserve a mask-like channel as an integer image to match an
+  existing pipeline, pass --output-dtype uint8 explicitly.
 - Arrays are normalized to C-contiguous memory before constructing the NIfTI
   object. This avoids slow slicing and warnings caused by MATLAB-style F-order
   arrays.
@@ -21,24 +39,37 @@ Examples:
      --mat-key B1minus_mag \
      --complex-mode real
 
-2) Convert one named variable using magnitude:
+2) Convert one named variable using phase:
+   nnunet/.venv/bin/python scripts/mat_to_nifti.py \
+     --input /Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy/M1.mat \
+     --mat-key B1minus \
+     --complex-mode phase
+
+3) Convert one named variable using magnitude:
    nnunet/.venv/bin/python scripts/mat_to_nifti.py \
      --input /Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy/M1.mat \
      --mat-key B1minus_mag \
      --complex-mode magnitude
 
-3) Batch convert all numeric variables in a directory:
+4) Batch convert all numeric variables in a directory:
    nnunet/.venv/bin/python scripts/mat_to_nifti.py \
      --input /Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy \
      --batch \
      --complex-mode real
 
-4) Preserve complex values as complex64 NIfTI (not nnUNet-compatible):
+5) Preserve complex values as complex64 NIfTI (not nnUNet-compatible):
    nnunet/.venv/bin/python scripts/mat_to_nifti.py \
      --input /Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy/M1.mat \
      --mat-key B1minus_mag \
      --complex-mode complex \
      --sform-matrix identity
+
+6) Write a segmentation-like channel as uint8:
+   nnunet/.venv/bin/python scripts/mat_to_nifti.py \
+     --input /Users/apple/Documents/deeplc/ADEPT_Dataset/Healthy/M1.mat \
+     --mat-key Segmentation \
+     --complex-mode phase \
+     --output-dtype uint8
 """
 
 from __future__ import annotations
@@ -72,7 +103,20 @@ from normalize_nifti_identity import (
 EXIT_GENERAL_ERROR = 1
 EXIT_SELECTION_ERROR = 2
 
-VALID_COMPLEX_MODES = ("complex", "real", "magnitude")
+VALID_COMPLEX_MODES = ("phase", "magnitude", "real", "complex")
+VALID_OUTPUT_DTYPES = (
+    "auto",
+    "uint8",
+    "uint16",
+    "int16",
+    "int32",
+    "int64",
+    "float32",
+    "float64",
+    "complex64",
+    "complex128",
+)
+OUTPUT_DTYPE_MAP = {name: np.dtype(name) for name in VALID_OUTPUT_DTYPES if name != "auto"}
 MATLAB_META_KEYS = {"__header__", "__version__", "__globals__"}
 
 
@@ -137,9 +181,21 @@ def parse_args() -> argparse.Namespace:
         required=True,
         choices=VALID_COMPLEX_MODES,
         help=(
-            "Complex handling policy: complex keeps complex values as complex64 "
-            "(not nnUNet-compatible), real keeps only the real part, magnitude "
-            "stores the absolute value."
+            "Complex handling policy for complex-valued MAT arrays: phase stores "
+            "np.angle(array) as float32, magnitude stores np.abs(array) as "
+            "float32, real stores np.real(array) as float32, and complex keeps "
+            "complex values as complex64 (generally not nnUNet-compatible). "
+            "Real-valued arrays are always written as float32 without value changes."
+        ),
+    )
+    p.add_argument(
+        "--output-dtype",
+        default="auto",
+        choices=VALID_OUTPUT_DTYPES,
+        help=(
+            "Output NIfTI data dtype. auto keeps the previous behavior: real-valued "
+            "results become float32 and complex-valued results become complex64. "
+            "Use uint8 for mask-like channels when you need integer storage."
         ),
     )
     p.add_argument("--overwrite", action="store_true", help="Overwrite existing outputs.")
@@ -252,16 +308,44 @@ def select_variables(path: Path, args: argparse.Namespace) -> List[MatVariable]:
     )
 
 
-def prepare_array(array: np.ndarray, complex_mode: str) -> PreparedArray:
+def resolve_output_dtype(converted: np.ndarray, output_dtype_name: str) -> np.dtype:
+    if output_dtype_name == "auto":
+        if np.iscomplexobj(converted):
+            return np.dtype(np.complex64)
+        return np.dtype(np.float32)
+
+    dtype = OUTPUT_DTYPE_MAP[output_dtype_name]
+    is_complex_result = bool(np.iscomplexobj(converted))
+    is_complex_dtype = np.issubdtype(dtype, np.complexfloating)
+
+    if is_complex_result and not is_complex_dtype:
+        raise ConfigError(
+            "Requested a real-valued --output-dtype for complex-valued output. "
+            "Use --complex-mode phase|magnitude|real to convert complex data to real values first."
+        )
+    if not is_complex_result and is_complex_dtype:
+        raise ConfigError(
+            "Requested a complex --output-dtype for real-valued output. "
+            "Use a real dtype or switch to --complex-mode complex."
+        )
+    return dtype
+
+
+def prepare_array(array: np.ndarray, complex_mode: str, output_dtype_name: str) -> PreparedArray:
     was_complex = bool(np.iscomplexobj(array))
     source_dtype = str(array.dtype)
 
     if was_complex:
-        if complex_mode == "real":
-            converted = np.real(array)
+        # Complex conversion is explicit so dataset generation cannot silently
+        # swap phase, magnitude, real-part, and full complex representations.
+        if complex_mode == "phase":
+            converted = np.angle(array)
             output_dtype = np.dtype(np.float32)
         elif complex_mode == "magnitude":
             converted = np.abs(array)
+            output_dtype = np.dtype(np.float32)
+        elif complex_mode == "real":
+            converted = np.real(array)
             output_dtype = np.dtype(np.float32)
         elif complex_mode == "complex":
             converted = array
@@ -270,7 +354,7 @@ def prepare_array(array: np.ndarray, complex_mode: str) -> PreparedArray:
             raise ConfigError(f"Unsupported --complex-mode: {complex_mode}")
     else:
         converted = array
-        output_dtype = np.dtype(np.float32)
+    output_dtype = resolve_output_dtype(converted, output_dtype_name)
 
     data = np.asanyarray(converted, dtype=output_dtype, order="C")
     return PreparedArray(
@@ -366,7 +450,7 @@ def main() -> None:
     selections: List[tuple[MatVariable, Path, PreparedArray]] = []
     for mat_path in files:
         for variable in select_variables(mat_path, args):
-            prepared = prepare_array(variable.array, args.complex_mode)
+            prepared = prepare_array(variable.array, args.complex_mode, args.output_dtype)
             output_path = resolve_output_path(variable, args)
             selections.append((variable, output_path, prepared))
 
@@ -401,7 +485,7 @@ def main() -> None:
     if args.complex_mode == "complex":
         print("[WARN] complex mode writes complex64 NIfTI output and is not nnUNet-compatible.")
     elif not args.dry_run:
-        print("Outputs are float32 and nnUNet-compatible with respect to dtype.")
+        print(f"Outputs were written with resolved dtype policy based on --output-dtype={args.output_dtype}.")
 
 
 if __name__ == "__main__":

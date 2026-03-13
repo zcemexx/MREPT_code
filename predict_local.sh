@@ -40,6 +40,13 @@ set -euo pipefail
 #    NIFTI_GEOM_PREFLIGHT=fix-all \
 #    NIFTI_GEOM_SFORM_MATRIX=identity \
 #    bash predict_local.sh
+#
+# 5) NO preflight (skip geometry checks/fixes):
+#    INPUT_DIR=/path/to/imagesTs \
+#    OUTPUT_DIR=/path/to/preds \
+#    MODEL_DIR=/path/to/model_dir \
+#    NIFTI_GEOM_PREFLIGHT=off \
+#    bash predict_local.sh
 # -----------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
