@@ -23,13 +23,25 @@ import re
 from nnunetv2.paths import nnUNet_raw
 
 
+def _split_identifier_and_channel(filename: str, file_ending: str):
+    if not filename.endswith(file_ending):
+        return None
+    stem = filename[:-len(file_ending)]
+    match = re.fullmatch(r"(.+)_([0-9]{4})", stem)
+    if match is None:
+        return None
+    return match.group(1), match.group(2)
+
+
 def get_identifiers_from_splitted_dataset_folder(folder: str, file_ending: str):
     files = subfiles(folder, suffix=file_ending, join=False)
-    # all files have a 4 digit channel index (_XXXX)
-    crop = len(file_ending) + 5
-    files = [i[:-crop] for i in files]
-    # only unique image ids
-    files = np.unique(files)
+    identifiers = []
+    for i in files:
+        parsed = _split_identifier_and_channel(i, file_ending)
+        if parsed is None:
+            continue
+        identifiers.append(parsed[0])
+    files = np.unique(identifiers)
     return files
 
 
@@ -41,6 +53,7 @@ def create_lists_from_splitted_dataset_folder(folder: str, file_ending: str, ide
     if identifiers is None:
         identifiers = get_identifiers_from_splitted_dataset_folder(folder, file_ending)
     files = subfiles(folder, suffix=file_ending, join=False, sort=True)
+    files = [i for i in files if _split_identifier_and_channel(i, file_ending) is not None]
     list_of_lists = []
     for f in identifiers:
         p = re.compile(re.escape(f) + r"_\d\d\d\d" + re.escape(file_ending))

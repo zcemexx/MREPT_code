@@ -1,6 +1,8 @@
 import argparse
 import inspect
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -12,6 +14,7 @@ from nnunetv2.inference.predict_from_raw_data import (
     RECONSTRUCTION_MODES,
     nnUNetPredictor,
 )
+from nnunetv2.utilities.utils import create_lists_from_splitted_dataset_folder
 
 
 def identity_tqdm(iterable, *args, **kwargs):
@@ -221,6 +224,40 @@ class TestGaussianReconstruction(unittest.TestCase):
 
         self.assertEqual(result.dtype, torch.float32)
         self.assertTrue(torch.isfinite(result).all())
+
+    def test_create_lists_ignores_unrelated_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            folder = Path(tmpdir)
+            for name in (
+                'magnitude.nii.gz',
+                'mask.nii.gz',
+                'ssfp_0000.nii.gz',
+                'ssfp_0001.nii.gz',
+            ):
+                (folder / name).write_bytes(b'')
+
+            result = create_lists_from_splitted_dataset_folder(str(folder), '.nii.gz')
+
+        self.assertEqual(result, [[str(folder / 'ssfp_0000.nii.gz'), str(folder / 'ssfp_0001.nii.gz')]])
+
+    def test_manage_input_skips_incomplete_cases(self):
+        predictor = self._make_predictor()
+        predictor.dataset_json = {'file_ending': '.nii.gz', 'channel_names': {'0': 'Phase', '1': 'Mask'}}
+        input_cases = [
+            ['/tmp/ssfp_0000.nii.gz', '/tmp/ssfp_0001.nii.gz'],
+            ['/tmp/missing_pair_0000.nii.gz'],
+            [],
+        ]
+
+        valid_cases, output_files, prev_stage = predictor._manage_input_and_output_lists(
+            input_cases,
+            '/tmp/out',
+            overwrite=True,
+        )
+
+        self.assertEqual(valid_cases, [['/tmp/ssfp_0000.nii.gz', '/tmp/ssfp_0001.nii.gz']])
+        self.assertEqual(output_files, ['/tmp/out/ssfp'])
+        self.assertEqual(prev_stage, [None])
 
     def test_gaussian_supports_patch_dims_one_shorter_than_image_dims(self):
         predictor = self._make_predictor(patch_size=(4, 4), tile_step_size=0.5)

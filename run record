@@ -1,4 +1,5 @@
 ## 模型预测重建
+Hjc310110200402205613.
 Saved conductivity map: /home/zcemexx/Scratch/outputs/phase5_sigma_recon/M6/SNR150/M6_SNR150_sigma_recon.nii.gz
 > output/phase5中。nii文件都是上一版model预测的，都不需要
   M6_SNR010.nii.gz（radius map）
@@ -7,18 +8,14 @@ Saved conductivity map: /home/zcemexx/Scratch/outputs/phase5_sigma_recon/M6/SNR1
 
 predicted map: /home/zcemexx/Scratch/pred/preds_local/mae/5f
 
-检查regression nii坐标一致性：空间信息修复脚本
-列出 phase5_sigma_recon 已完成案例： 模型推理输入输出保持一致（未执行）
-添加批量MAT转NII脚本（含通道开关）：mat to niigz
-处理 exp.m 中复数数据的问题吗：mat to niigz，添加phase输入（0000通道）
-
-所有制图、对比脚本只使用索引，避免坐标系错位
-检查invivo的坐标系和voxel size，确认其空间信息
-测试mat to nii 脚本
 检查
 1 phase5 正确cond17重建
 2 invivo fix+map OUT_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/cond_fixrad17_kdiff35.nii.gz
-ID 
+
+invivo
+标准： gm = 2 wm =1 csf =3 
+insight64 gm = 2 wm =1 csf =3 correct
+ssfp gm = 1 wm = 2 csf = 3 incorrect
 
 qsub -t 9-136 fixcond17.sh
 -----------------------------------------------------------------------------------------------------------------
@@ -161,7 +158,7 @@ ssh zcemexx@myriad.rc.ucl.ac.uk
 
 
 scp -r -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk \
-zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/nnUNet_results/Dataset001_EPT/ \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/tmp/ \
 /home/linux1917366562/MREPT_code/nnUNet_results/
 
 scp -r -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk \
@@ -175,8 +172,8 @@ zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr/M6_SNR
 
 source /home/linux1917366562/nnunet_env/bin/activate
 cd /home/linux1917366562/MREPT_code
-INPUT_DIR=/home/linux1917366562/MREPT_code/data/exps/imagesTr \
-OUTPUT_DIR=/home/linux1917366562/MREPT_code/preds_local/mae/5f \
+INPUT_DIR=/home/linux1917366562/MREPT_code/data/M6 \
+OUTPUT_DIR=/home/linux1917366562/MREPT_code/data/others \
 bash predict_local.sh
 
 python -m nnunetv2.evaluation.evaluate_regression_tissue_predictions \
@@ -221,7 +218,7 @@ zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/outputs/phase5_sigma_recon/M6/
 ~/Documents/mresult/tmp/
 
 rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
-zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/M1_SNR030.nii.gz \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/{cond_fixrad17_kdiff35.nii.gz,cond_pred_M1_SNR030.nii.gz} \
 ~/Documents/mresult/tmp/
 
 1 电导率 ：pred_cond.nii.gz
@@ -251,72 +248,57 @@ zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_H
 OUTPUT_DIR=/home/linux1917366562/MREPT_code/data/3T_in-vivo_3DGRE_Head_Neck_repeatibility/ \
 bash predict_local.sh
 
-git restore --source 7679e7fc2f8a5955377105e9931ee17e806e1c95 -- /Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/regression_tissue_metrics.py /Users/apple/Documents/MREPT_code/nnunet/nnunetv2/evaluation/evaluate_regression_tissue_predictions.py
+source /home/linux1917366562/nnunet_env/bin/activate && python3 scripts/normalize_nifti_identity.py \
+  --input /home/linux1917366562/MREPT_code/data/M6 \
+  --inplace
+使用数据/home/linux1917366562/MREPT_code/eval/M6/mae_compare_nib/cases生成
+1 SNR–MAE 曲线	SNR (10→150, log刻度)	MAE，4条线(Global/WM/GM/CSF)	最核心图，直接展示噪声鲁棒性
+2	SNR–Acc 曲线	SNR	Acc_1/Acc_3/Acc_5（全局），三条线	展示精度饱和点，补充MAE的绝对值局限
 
-/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr/M6_SNR010.nii.gz
+scp -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk "D:\ept offline files\3T_in-vivo_2DGRE-EPI_DiSCo\noisemap.nii.gz" zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/
 
-/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/M1_SNR030.nii.gz 
+ rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" "/home/linux1917366562/data/*" zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/
 
-添加action:fix-missing-form：
+source /home/linux1917366562/nnunet_env/bin/activate && python3 /home/linux1917366562/MREPT_code/scripts/normalize_nifti_identity.py \
+     --input /home/linux1917366562/data \
+     --action fix-missing-form \
+     --inplace
 
-qform=0,sform>0：复制 sform 到 qform；
-sform=0,qform>0：复制 qform 到 sform；
-不要改成 identity。
+rsync -avzP --exclude='nnUNet_raw/' -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" /home/linux1917366562/data/ zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/
 
-修改action:fix all 
-可设置qform，sform code， sform matrix（identity或自定义）
+NO preflight (skip geometry checks/fixes):
+    INPUT_DIR="\\wsl.localhost\Ubuntu\home\linux1917366562\data\3T_in-vivo_3DbSSFP" \
+    OUTPUT_DIR="\\wsl.localhost\Ubuntu\home\linux1917366562\data\3T_in-vivo_3DbSSFP" \
+    MODEL_DIR=/path/to/model_dir \
+    NIFTI_GEOM_PREFLIGHT=off \
+    bash predict_local.sh
 
-optional
-xyzt_units 可设为 NIFTI_UNITS_MM 和 NIFTI_UNITS_SEC等
-pixdim[1:3]
-cal_max / cal_min
+我现在准备对invivo数据（insight64 ssfp）进行推理，0000输入通道使用的是phi0，0001使用的是segmentation
 
-10 50 150
-10 phase fixcond17 porposed optimal gt （rmse ssim
-hot diff map（mae）
-
-rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
-zcemexx@myriad:/home/zcemexx/Scratch/outputs/phase5/M12/SNR010/pred_kernel_map.mat \
-~/Documents/mresult/tmp/
-
-Rewrite all files using an explicit target matrix:
-   python scripts/normalize_nifti_identity.py \
-     --input /Users/apple/Documents/mresult/tmp \
-     --action fix-all \
-     --inplace \
-     --sform-matrix identity
+现在有一个问题，seg的标签定义标准： gm = 2 wm =1 csf =3 
 
 
+insight64 gm = 2 wm =1 csf =3 correct
+ssfp gm = 1 wm = 2 csf = 3 incorrect
 
-/home/zcemexx/Scratch/exp/exp001_EPT/labelsTr/M8_SNR150.nii.gz
+python3 /home/linux1917366562/MREPT_code/scripts/remap_nifti_labels.py \
+  --input '/home/linux1917366562/data/3T_in-vivo_3DbSSFP/segmentation.nii' \
+  --output '/home/linux1917366562/data/3T_in-vivo_3DbSSFP/segmentation.nii' \
+  --map 1:2 2:1
 
-find . -maxdepth 1 -mindepth 1 -type d -exec mv {} ./ \;
+  cd /home/linux1917366562/MREPT_code
 
-sigma_reconstructed_cond_optimal.nii.gz
+INPUT_DIR=/home/linux1917366562/data/3T_in-vivo_3DGRE_insight64 \
+OUTPUT_DIR=/home/linux1917366562/data/3T_in-vivo_3DGRE_insight64 \
+MODEL_DIR=/home/linux1917366562/MREPT_code/nnUNet_results/nnUNetTrainerMRCT_mae_regfix__nnResUNetPlans__3d_fullres \
+NIFTI_GEOM_PREFLIGHT=off \
+bash predict_local.sh
 
-rsync -avh --progress -e "ssh -J zcemexx@ssh-gateway.ucl.ac.uk" \
-/Users/apple/Documents/deeplc/UCLMRT/data/* \
-zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/
+export VOXEL_MM='1,1,1'
 
-rsync -avh --progress -e "ssh -J zcemexx@ssh-gateway.ucl.ac.uk" \
-/Users/apple/Documents/deeplc/UCLMRT/data/3T_in-vivo_2DGRE-EPI_DiSCo/noisemap.nii.gz \
-zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/3T_in-vivo_2DGRE-EPI_DiSCo/
+qsub -v VOXEL_MM,DATA_ROOT=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP,PHASE_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP/ssfp_0000.nii.gz,SEG_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP/ssfp_0001.nii.gz,RADIUS_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP/ssfp.nii.gz,OUT_NII=/home/zcemexx/Scratch/outputs/invivo/cond_pred_ssfp.nii.gz,ESTIMATE_NOISE=true /home/zcemexx/projects/MREPT_code/invivoPred.sh
 
-/home/zcemexx/Scratch/outputs/phase5_sigma_recon里所有文件改名为cond_pred
 
-   nnunet/.venv/bin/python scripts/mat_to_nifti.py \
-     --input /Users/apple/Documents/mresult/tmp/noisy_phase_SNR010.mat \
-     --mat-key tissueMask \
-     --name iso\
-     --complex-mode phase
-     
- --mat-key Segmentation \
+"\\wsl.localhost\Ubuntu\home\linux1917366562\data\3T_in-vivo_3DGRE_insight64\insight64_0000.nii"
 
-使用/projects/MREPT_code/scripts/mat_to_nifti.py，将/home/zcemexx/Scratch/outputs/phase5里的pred_kernel_map.mat optimal_recon.mat
-rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
-zcemexx@myriad:/home/zcemexx/Scratch/outputs/phase5_sigma_recon/M84/SNR150 \
-~/Documents/mresult/tmp/
-
-使用/projects/MREPT_code/scripts/mat_to_nifti.py，将/home/zcemexx/Scratch/outputs/phase5里的pred_kernel_map.mat（label_final） optimal_recon.mat noisy_phase_SNR*.mat(
-
-  rsync -avP /home/zcemexx/Scratch/outputs/phase5_sigma_recon/M84/SNR150/ 
+gzip -c /home/linux1917366562/data/3T_in-vivo_3DGRE_insight64/insight64_0000.nii > /home/linux1917366562/data/3T_in-vivo_3DGRE_insight64/insight64_0000.nii.gz

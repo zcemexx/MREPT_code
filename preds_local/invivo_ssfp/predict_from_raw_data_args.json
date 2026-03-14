@@ -1,0 +1,12 @@
+{
+    "folder_with_segs_from_prev_stage": null,
+    "list_of_lists_or_source_folder": "/home/linux1917366562/data/3T_in-vivo_3DbSSFP",
+    "num_parts": 1,
+    "num_processes_preprocessing": 2,
+    "num_processes_segmentation_export": 2,
+    "output_folder_or_list_of_truncated_output_files": "/home/linux1917366562/MREPT_code/preds_local/invivo_ssfp",
+    "overwrite": true,
+    "part_id": 0,
+    "reconstruction_mode": "gaussian",
+    "save_probabilities": false
+}

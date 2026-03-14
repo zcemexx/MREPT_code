@@ -283,7 +283,26 @@ class nnUNetPredictor(object):
         if isinstance(list_of_lists_or_source_folder, str):
             list_of_lists_or_source_folder = create_lists_from_splitted_dataset_folder(list_of_lists_or_source_folder,
                                                                                        self.dataset_json['file_ending'])
-        print(f'There are {len(list_of_lists_or_source_folder)} cases in the source folder')
+        expected_num_channels = len(
+            self.dataset_json['channel_names'].keys()
+            if 'channel_names' in self.dataset_json.keys()
+            else self.dataset_json['modality'].keys()
+        )
+        valid_cases = []
+        skipped_cases = []
+        for case_files in list_of_lists_or_source_folder:
+            if len(case_files) == expected_num_channels:
+                valid_cases.append(case_files)
+            else:
+                skipped_cases.append(case_files)
+        if len(skipped_cases) > 0:
+            print(
+                f'Skipping {len(skipped_cases)} case(s) with incomplete or invalid channel files '
+                f'(expected {expected_num_channels} channels).'
+            )
+            print(skipped_cases)
+        list_of_lists_or_source_folder = valid_cases
+        print(f'There are {len(list_of_lists_or_source_folder)} valid cases in the source folder')
         print(list_of_lists_or_source_folder)
         list_of_lists_or_source_folder = list_of_lists_or_source_folder[part_id::num_parts]
         # caseids = [os.path.basename(i[0])[:-(len(self.dataset_json['file_ending']) + 5)] for i in list_of_lists_or_source_folder]
