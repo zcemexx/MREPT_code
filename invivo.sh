@@ -66,9 +66,9 @@ module load matlab/full/r2023a/9.14
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---------- Config (override with env vars) ----------
-DATA_ROOT="${DATA_ROOT:-/Users/apple/Documents/deeplc/UCLMRT/data/3T_in-vivo_3DGRE_Head_Neck_repeatibility}"
-CODE_DIR="${CODE_DIR:-$SCRIPT_DIR/matlab/code}"
-MATLAB_BIN="${MATLAB_BIN:-/Applications/MATLAB_R2025a.app/bin/matlab}"
+DATA_ROOT="${DATA_ROOT:-/home/zcemexx/Scratch/data/invivo}"
+CODE_DIR="${CODE_DIR:-/home/zcemexx/projects/MREPT_code/matlab/code}"
+MATLAB_BIN="${MATLAB_BIN:-matlab}"
 
 PHASE_NII="${PHASE_NII:-$DATA_ROOT/phi0.nii.gz}"
 MASK_NII="${MASK_NII:-$DATA_ROOT/mask.nii.gz}"
