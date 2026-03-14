@@ -1,4 +1,15 @@
-#!/usr/bin/env bash
+#!/bin/bash -l
+#$ -S /bin/bash
+#$ -N invPredR
+#$ -l h_rt=11:59:00
+#$ -l mem=5G
+#$ -l tmpfs=8G
+#$ -pe smp 16
+#$ -wd /home/zcemexx/Scratch
+#$ -o /home/zcemexx/Scratch/logs/
+#$ -j y
+#$ -m abe
+#$ -M zcemexx@ucl.ac.uk
 # invivo.sh
 # Purpose:
 #   Single-case in-vivo conductivity reconstruction wrapper.
@@ -41,13 +52,16 @@
 #   FIXED_RADIUS    optional fixed radius (integer > 0), bypass radius-map requirement
 #   OUT_NII         output conductivity NIfTI
 #   B0_T            scanner field strength (Tesla)
-#   VOXEL_MM        voxel size, format: "x,y,z"
+#   VOXEL_MM        optional voxel size override, format: "x,y,z"
+#                   if unset, read from NIfTI header automatically
 #   ESTIMATE_NOISE  true/false
 #   RADIUS_MIN/MAX  clamp predicted radius before reconstruction
 #
 # Exit codes:
 #   0 on success, non-zero on validation or MATLAB failure.
 set -euo pipefail
+module purge
+module load matlab/full/r2023a/9.14
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -67,7 +81,7 @@ FIXED_RADIUS="${FIXED_RADIUS:-}"
 
 OUT_NII="${OUT_NII:-$DATA_ROOT/sigma_recon.nii.gz}"
 B0_T="${B0_T:-3}"
-VOXEL_MM="${VOXEL_MM:-0.85938,0.85938,1.5}"
+VOXEL_MM="${VOXEL_MM:-}"
 ESTIMATE_NOISE="${ESTIMATE_NOISE:-false}"
 RADIUS_MIN="${RADIUS_MIN:-1}"
 RADIUS_MAX="${RADIUS_MAX:-30}"
@@ -156,7 +170,11 @@ else
 fi
 echo "OUT_NII        : $OUT_NII"
 echo "B0_T           : $B0_T"
-echo "VOXEL_MM       : $VOXEL_MM"
+if [[ -n "$VOXEL_MM" ]]; then
+    echo "VOXEL_MM       : $VOXEL_MM (env override)"
+else
+    echo "VOXEL_MM       : <auto from NIfTI header>"
+fi
 echo "ESTIMATE_NOISE : $ESTIMATE_NOISE"
 echo "RADIUS_MIN/MAX : $RADIUS_MIN / $RADIUS_MAX"
 echo "================================================="

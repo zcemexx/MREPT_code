@@ -302,3 +302,8 @@ qsub -v VOXEL_MM,DATA_ROOT=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP,
 "\\wsl.localhost\Ubuntu\home\linux1917366562\data\3T_in-vivo_3DGRE_insight64\insight64_0000.nii"
 
 gzip -c /home/linux1917366562/data/3T_in-vivo_3DGRE_insight64/insight64_0000.nii > /home/linux1917366562/data/3T_in-vivo_3DGRE_insight64/insight64_0000.nii.gz
+
+qsub -v DATA_ROOT=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP,PHASE_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP/ssfp_0000.nii.gz,SEG_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP/ssfp_0001.nii.gz,RADIUS_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DbSSFP/ssfp.nii.gz,OUT_NII=/home/zcemexx/Scratch/outputs/invivo/cond_pred_ssfp.nii.gz,VOXEL_MM=1,1,1,ESTIMATE_NOISE=true /home/zcemexx/projects/MREPT_code/invivoPred.sh
+
+qsub -v DATA_ROOT=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_insight64,PHASE_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_insight64/insight64_0000.nii.gz,SEG_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_insight64/insight64_0001.nii.gz,MASK_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_insight64/mask.nii,MAG_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_insight64/magnitude.nii,RADIUS_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_insight64/insight64.nii.gz,OUT_NII=/home/zcemexx/Scratch/outputs/invivo/cond_pred_insight64.nii.gz,VOXEL_MM=0.85938,0.85938,1.5,ESTIMATE_NOISE=true /home/zcemexx/projects/MREPT_code/invivoPred.sh
+

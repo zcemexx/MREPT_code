@@ -18,7 +18,9 @@ function reconstruct_conductivity_from_radiusmap()
 %   MAG_NII     magnitude NIfTI (for Mag/Seg EPT)
 %   SEG_NII     segmentation NIfTI (for Seg/Mag+Seg EPT)
 %   B0_T        field strength in Tesla, default 3
-%   VOXEL_MM    voxel size in mm, format "1,1,1", default "1,1,1"
+%   VOXEL_MM    optional voxel size override in mm, format "1,1,1".
+%               If unset, infer from NIfTI header (PHASE_NII in NIfTI mode,
+%               RADIUS_NII in MAT mode).
 %   ESTIMATE_NOISE  true/false, default false
 %   RADIUS_MIN  default 1
 %   RADIUS_MAX  default 30
@@ -45,15 +47,22 @@ b0_t = str2double(getenv_default('B0_T', '3'));
 estimate_noise = parse_bool(getenv_default('ESTIMATE_NOISE', 'false'));
 rmin = str2double(getenv_default('RADIUS_MIN', '1'));
 rmax = str2double(getenv_default('RADIUS_MAX', '30'));
-voxel_mm = parse_vec3(getenv_default('VOXEL_MM', '1,1,1'));
+
+phase_nii = '';
+mask_nii = '';
+if ~isempty(input_data) && is_mat_path(input_data)
+    voxel_mm = infer_voxel_mm(radius_nii, 'RADIUS_NII');
+else
+    phase_nii = must_getenv('PHASE_NII');
+    mask_nii = must_getenv('MASK_NII');
+    voxel_mm = infer_voxel_mm(phase_nii, 'PHASE_NII');
+end
 
 fprintf('Loading inputs...\n');
 radius_map = single(load_nii_any(radius_nii));
 if ~isempty(input_data) && is_mat_path(input_data)
     [phase_map, mask, mag, seg] = load_inputs_from_mat(input_data);
 else
-    phase_nii = must_getenv('PHASE_NII');
-    mask_nii = must_getenv('MASK_NII');
     phase_map = single(load_nii_any(phase_nii));
     mask_img = load_nii_any(mask_nii);
     mask = mask_img > 0;
@@ -89,6 +98,7 @@ radius_map(~mask) = 0;
 params = struct();
 params.B0 = b0_t;
 params.VoxelSize = voxel_mm;
+fprintf('Using voxel size [mm]: [%g %g %g]\n', voxel_mm(1), voxel_mm(2), voxel_mm(3));
 % No integral kernel -> Laplacian-form EPT (same as your training data generation path).
 
 sigma = zeros(size(phase_map), 'single');
@@ -209,6 +219,46 @@ end
 v = [str2double(tokens{1}), str2double(tokens{2}), str2double(tokens{3})];
 if any(~isfinite(v)) || any(v <= 0)
     error('VOXEL_MM values must be positive numbers, got: %s', s);
+end
+end
+
+function v = infer_voxel_mm(reference_nii, source_name)
+override = getenv('VOXEL_MM');
+if ~isempty(override)
+    v = parse_vec3(override);
+    fprintf('VOXEL_MM override from env: [%g %g %g]\n', v(1), v(2), v(3));
+    return;
+end
+
+v = read_voxel_mm_from_nifti(reference_nii);
+fprintf('VOXEL_MM inferred from %s header (%s): [%g %g %g]\n', ...
+    source_name, reference_nii, v(1), v(2), v(3));
+end
+
+function v = read_voxel_mm_from_nifti(path_in)
+if exist('niftiinfo', 'file') == 2
+    info = niftiinfo(path_in);
+    if isfield(info, 'PixelDimensions') && numel(info.PixelDimensions) >= 3
+        v = double(info.PixelDimensions(1:3));
+    else
+        error('NIfTI header missing PixelDimensions: %s', path_in);
+    end
+elseif exist('nii_tool', 'file') == 2
+    hdr = nii_tool('hdr', path_in);
+    if isfield(hdr, 'pixdim') && numel(hdr.pixdim) >= 4
+        v = double(hdr.pixdim(2:4));
+    elseif isfield(hdr, 'hdr') && isfield(hdr.hdr, 'pixdim') && numel(hdr.hdr.pixdim) >= 4
+        v = double(hdr.hdr.pixdim(2:4));
+    else
+        error('NIfTI header missing pixdim: %s', path_in);
+    end
+else
+    error('No NIfTI header reader available. Need niftiinfo or nii_tool.');
+end
+
+if any(~isfinite(v)) || any(v <= 0)
+    error('Invalid voxel size read from NIfTI header for %s: [%g %g %g]', ...
+        path_in, v(1), v(2), v(3));
 end
 end
 
