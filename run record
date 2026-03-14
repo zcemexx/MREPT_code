@@ -276,7 +276,7 @@ cal_max / cal_min
 hot diff map（mae）
 
 rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
-zcemexx@myriad:/home/zcemexx/Scratch/outputs/phase5_sigma_recon/M12/SNR010/M12_SNR010_sigma_recon.nii.gz \
+zcemexx@myriad:/home/zcemexx/Scratch/outputs/phase5/M12/SNR010/pred_kernel_map.mat \
 ~/Documents/mresult/tmp/
 
 Rewrite all files using an explicit target matrix:
@@ -294,6 +294,29 @@ find . -maxdepth 1 -mindepth 1 -type d -exec mv {} ./ \;
 
 sigma_reconstructed_cond_optimal.nii.gz
 
-scp -r -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk \
+rsync -avh --progress -e "ssh -J zcemexx@ssh-gateway.ucl.ac.uk" \
 /Users/apple/Documents/deeplc/UCLMRT/data/* \
 zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/
+
+rsync -avh --progress -e "ssh -J zcemexx@ssh-gateway.ucl.ac.uk" \
+/Users/apple/Documents/deeplc/UCLMRT/data/3T_in-vivo_2DGRE-EPI_DiSCo/noisemap.nii.gz \
+zcemexx@myriad.rc.ucl.ac.uk:/home/zcemexx/Scratch/data/invivo/3T_in-vivo_2DGRE-EPI_DiSCo/
+
+/home/zcemexx/Scratch/outputs/phase5_sigma_recon里所有文件改名为cond_pred
+
+   nnunet/.venv/bin/python scripts/mat_to_nifti.py \
+     --input /Users/apple/Documents/mresult/tmp/noisy_phase_SNR010.mat \
+     --mat-key tissueMask \
+     --name iso\
+     --complex-mode phase
+     
+ --mat-key Segmentation \
+
+使用/projects/MREPT_code/scripts/mat_to_nifti.py，将/home/zcemexx/Scratch/outputs/phase5里的pred_kernel_map.mat optimal_recon.mat
+rsync -avzP -e "ssh -o ProxyJump=zcemexx@ssh-gateway.ucl.ac.uk" \
+zcemexx@myriad:/home/zcemexx/Scratch/outputs/phase5_sigma_recon/M84/SNR150 \
+~/Documents/mresult/tmp/
+
+使用/projects/MREPT_code/scripts/mat_to_nifti.py，将/home/zcemexx/Scratch/outputs/phase5里的pred_kernel_map.mat（label_final） optimal_recon.mat noisy_phase_SNR*.mat(
+
+  rsync -avP /home/zcemexx/Scratch/outputs/phase5_sigma_recon/M84/SNR150/ 

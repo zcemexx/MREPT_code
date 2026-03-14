@@ -20,5 +20,5 @@ CODE_DIR=/home/zcemexx/projects/MREPT_code/matlab/code \
 MATLAB_BIN=matlab \
 FIXED_RADIUS=17 \
 ESTIMATE_NOISE=true \
-OUT_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/cond_fixrad17_kdiff35.nii.gz \
+OUT_NII=/home/zcemexx/Scratch/data/invivo/3T_in-vivo_3DGRE_Head_Neck_repeatibility/cond_fixr17.nii.gz \
 bash /home/zcemexx/projects/MREPT_code/invivo.sh

@@ -1,10 +1,10 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N invPredR
-#$ -l h_rt=12:59:00
+#$ -l h_rt=11:59:00
 #$ -l mem=8G
 #$ -l tmpfs=8G
-#$ -pe smp 8
+#$ -pe smp 16
 #$ -wd /home/zcemexx/Scratch
 #$ -o /home/zcemexx/Scratch/logs/
 #$ -j y
