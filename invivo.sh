@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #$ -S /bin/bash
 #$ -N invPredR
-#$ -l h_rt=05:59:00
+#$ -l h_rt=01:59:00
 #$ -l mem=5G
 #$ -l tmpfs=8G
 #$ -pe smp 16
