@@ -22,7 +22,7 @@ cd "$REMOTE_REPO_DIR"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
     stash_name="auto-sync-before-pull-$(date +'%Y%m%d-%H%M%S')"
-    git stash push --include-untracked -m "$stash_name" >/dev/null
+    git stash save -u "$stash_name" >/dev/null
     echo "[remote] Stashed local changes as: $stash_name"
 fi
 
