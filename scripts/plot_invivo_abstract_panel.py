@@ -31,6 +31,11 @@ from nnunetv2.utilities.ismrm_abstract_pipeline import (  # noqa: E402
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render the in-vivo 1x4 abstract panel.")
     parser.add_argument("--root", type=Path, default=DEFAULT_INVIVO_ROOT)
+    parser.add_argument("--magnitude", type=Path, default=None)
+    parser.add_argument("--radius", type=Path, default=None)
+    parser.add_argument("--cond-fix", type=Path, default=None)
+    parser.add_argument("--cond-pred", type=Path, default=None)
+    parser.add_argument("--mask", type=Path, default=None)
     parser.add_argument("--slice-index", type=int, default=50)
     parser.add_argument("--slice-axis", type=int, default=2)
     parser.add_argument("--margin", type=int, default=DEFAULT_MARGIN)
@@ -61,11 +66,11 @@ def main() -> int:
     root = args.root
     output = args.output or (root / f"insight64_axial{args.slice_index:03d}_1x4.png")
 
-    magnitude_path = first_existing_path((root / "magnitude.nii.gz", root / "magnitude.nii"))
-    radius_path = root / "insight64.nii.gz"
-    cond_fix_path = root / "cond_fixrad17_insight64.nii.gz"
-    cond_pred_path = root / "cond_pred_insight64.nii.gz"
-    mask_path = first_existing_path((root / "mask.nii.gz", root / "mask.nii", root / "segmentation.nii.gz"))
+    magnitude_path = args.magnitude or first_existing_path((root / "magnitude.nii.gz", root / "magnitude.nii"))
+    radius_path = args.radius or (root / "insight64.nii.gz")
+    cond_fix_path = args.cond_fix or (root / "cond_fixrad17_insight64.nii.gz")
+    cond_pred_path = args.cond_pred or (root / "cond_pred_insight64.nii.gz")
+    mask_path = args.mask or first_existing_path((root / "mask.nii.gz", root / "mask.nii", root / "segmentation.nii.gz"))
 
     magnitude = load_nifti_array(magnitude_path)
     radius = load_nifti_array(radius_path)
