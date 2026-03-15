@@ -1,17 +1,33 @@
 #!/bin/bash
 
-# 配置
 REMOTE_HOST="myriad"
-REMOTE_REPO_DIR="~/projects/MREPT_code/matlab"
 
 echo "🎨 [1/2] Local: Pushing code to GitHub..."
 git add .
-git commit -m "Auto-sync $(date +'%Y-%m-%d %H:%M')"
-git push origin main
+
+if git diff --cached --quiet; then
+    echo "ℹ️  Local: no changes to commit."
+else
+    git commit -m "Auto-sync $(date +'%Y-%m-%d %H:%M')"
+fi
+
+git push origin main || exit 1
 
 echo "🌐 [2/2] Remote: Pulling code on Myriad..."
-# 使用 bash -l -c 确保加载 Git 环境
-ssh -T $REMOTE_HOST "bash -l -c 'cd $REMOTE_REPO_DIR && git pull origin main'"
+ssh -T "$REMOTE_HOST" 'bash -l -s' <<'EOF'
+set -e
+
+REMOTE_REPO_DIR="$HOME/projects/MREPT_code"
+cd "$REMOTE_REPO_DIR"
+
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    stash_name="auto-sync-before-pull-$(date +'%Y%m%d-%H%M%S')"
+    git stash push --include-untracked -m "$stash_name" >/dev/null
+    echo "[remote] Stashed local changes as: $stash_name"
+fi
+
+git pull --ff-only origin main
+EOF
 
 if [ $? -eq 0 ]; then
     echo "✅ 代码同步完成！"
