@@ -257,9 +257,11 @@ def masked_slicewise_ssim(
         eval_slice = eval_slices[..., slice_idx]
         bbox_slice = bbox_slices[..., slice_idx]
 
-        finite_slice = np.isfinite(pred_slice) & np.isfinite(gt_slice)
+        pred_finite = np.isfinite(pred_slice)
+        gt_finite = np.isfinite(gt_slice)
+        finite_slice = pred_finite & gt_finite
         eval_valid = eval_slice & finite_slice
-        bbox_valid = bbox_slice & finite_slice
+        bbox_valid = bbox_slice & gt_finite
         if not np.any(eval_valid) or not np.any(bbox_valid):
             continue
 
@@ -267,6 +269,7 @@ def masked_slicewise_ssim(
         pred_bbox = pred_slice[y_min:y_max, x_min:x_max]
         gt_bbox = gt_slice[y_min:y_max, x_min:x_max]
         eval_bbox = eval_valid[y_min:y_max, x_min:x_max]
+        bbox_gt_valid = bbox_valid[y_min:y_max, x_min:x_max]
         if not np.any(eval_bbox):
             continue
 
@@ -275,20 +278,31 @@ def masked_slicewise_ssim(
         if min_dim < 3:
             continue
 
-        gt_values = gt_bbox[eval_bbox]
+        gt_values = gt_bbox[bbox_gt_valid]
         data_range = float(gt_values.max() - gt_values.min())
         if not np.isfinite(data_range) or data_range <= 0:
             continue
 
+        pred_ssim = pred_bbox.copy()
+        gt_ssim = gt_bbox.copy()
+        invalid_bbox = ~(np.isfinite(pred_ssim) & np.isfinite(gt_ssim))
+        if np.any(invalid_bbox):
+            fill_value = float(np.mean(gt_values))
+            pred_ssim[invalid_bbox] = fill_value
+            gt_ssim[invalid_bbox] = fill_value
+
         _, ssim_map = structural_similarity(
-            pred_bbox,
-            gt_bbox,
+            pred_ssim,
+            gt_ssim,
             data_range=data_range,
             full=True,
             win_size=win_size,
         )
-        slice_weight = int(np.count_nonzero(eval_bbox))
-        weighted_sum += float(np.mean(ssim_map[eval_bbox])) * slice_weight
+        finite_eval = eval_bbox & np.isfinite(ssim_map)
+        if not np.any(finite_eval):
+            continue
+        slice_weight = int(np.count_nonzero(finite_eval))
+        weighted_sum += float(np.mean(ssim_map[finite_eval])) * slice_weight
         weight_total += slice_weight
 
     if weight_total == 0:

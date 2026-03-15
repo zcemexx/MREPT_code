@@ -7,6 +7,7 @@ import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+from typing import Iterable
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -116,6 +117,62 @@ def _compute_case_snr_rows(
     return rows, None
 
 
+def _ssim_summary(rows: Iterable[dict[str, object]]) -> dict[str, object]:
+    rows = list(rows)
+    finite_rows = []
+    counts_by_method_region: dict[str, dict[str, dict[str, int]]] = {}
+    expected_per_method_region = len(DEFAULT_CASE_IDS) * len(DEFAULT_SNRS)
+    global_expected_per_method = len(DEFAULT_CASE_IDS) * len(DEFAULT_SNRS)
+
+    for method in METHOD_ORDER:
+        counts_by_method_region[method] = {}
+        for region in REGION_ORDER:
+            counts_by_method_region[method][region] = {
+                "expected": expected_per_method_region,
+                "finite": 0,
+                "nan": 0,
+            }
+
+    for row in rows:
+        ssim_value = float(row["SSIM"])
+        bucket = counts_by_method_region[str(row["Method"])][str(row["Region"])]
+        if math.isfinite(ssim_value):
+            finite_rows.append(row)
+            bucket["finite"] += 1
+        else:
+            bucket["nan"] += 1
+
+    global_method_finite_counts = {
+        method: counts_by_method_region[method]["Global"]["finite"]
+        for method in METHOD_ORDER
+    }
+    global_methods_with_complete_ssim = {
+        method: counts == global_expected_per_method
+        for method, counts in global_method_finite_counts.items()
+    }
+    non_global_nan_count = sum(
+        counts_by_method_region[method][region]["nan"]
+        for method in METHOD_ORDER
+        for region in REGION_ORDER
+        if region != "Global"
+    )
+    global_nan_count = sum(
+        counts_by_method_region[method]["Global"]["nan"]
+        for method in METHOD_ORDER
+    )
+    return {
+        "valid_ssim_count": len(finite_rows),
+        "ssim_nan_count": len(rows) - len(finite_rows),
+        "ssim_finite_counts_by_method_region": counts_by_method_region,
+        "cnn_global_has_valid_ssim": global_method_finite_counts["CNN"] > 0,
+        "global_ssim_complete_by_method": global_methods_with_complete_ssim,
+        "global_ssim_complete_for_fig1": all(global_methods_with_complete_ssim.values()),
+        "global_ssim_nan_count": global_nan_count,
+        "non_global_ssim_nan_count": non_global_nan_count,
+        "only_non_global_ssim_nans_remain": global_nan_count == 0,
+    }
+
+
 def main() -> int:
     args = parse_args()
     output_csv = args.output_dir / "quantitative_results.csv"
@@ -156,6 +213,7 @@ def main() -> int:
     rows.sort(key=lambda row: (DEFAULT_CASE_IDS.index(str(row["Case_ID"])), int(row["SNR"]), METHOD_ORDER.index(str(row["Method"])), REGION_ORDER.index(str(row["Region"]))))
     complete_cases.sort(key=lambda item: (DEFAULT_CASE_IDS.index(str(item["case_id"])), int(item["snr"])))
     skipped_cases.sort(key=lambda item: (DEFAULT_CASE_IDS.index(str(item["case_id"])), int(item["snr"])))
+    ssim_summary = _ssim_summary(rows)
 
     write_csv(
         output_csv,
@@ -173,6 +231,7 @@ def main() -> int:
             "completed_case_snr_count": len(complete_cases),
             "skipped_case_snr_count": len(skipped_cases),
             "skipped_case_snrs": skipped_cases,
+            **ssim_summary,
             "oracle_accuracy_contract_holds": all(
                 math.isclose(float(row["Acc_1"]), 1.0)
                 and math.isclose(float(row["Acc_3"]), 1.0)

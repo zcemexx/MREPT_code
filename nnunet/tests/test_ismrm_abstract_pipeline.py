@@ -47,6 +47,39 @@ class ISMRMAbstractPipelineTests(unittest.TestCase):
         score = masked_slicewise_ssim(pred, gt, mask, mask)
         self.assertTrue(np.isfinite(score))
 
+    def test_masked_slice_ssim_uses_global_bbox_range_not_eval_region_range(self):
+        gt = np.zeros((5, 5, 1), dtype=np.float32)
+        pred = np.zeros((5, 5, 1), dtype=np.float32)
+        global_mask = np.zeros_like(gt, dtype=bool)
+        eval_mask = np.zeros_like(gt, dtype=bool)
+
+        gt[0:3, 0:3, 0] = np.array(
+            [[0.1, 0.2, 0.3], [0.2, 0.4, 0.6], [0.3, 0.6, 0.9]],
+            dtype=np.float32,
+        )
+        pred[0:3, 0:3, 0] = gt[0:3, 0:3, 0] * 0.9
+        global_mask[0:3, 0:3, 0] = True
+        eval_mask[1:3, 1:3, 0] = True
+
+        score = masked_slicewise_ssim(pred, gt, eval_mask, global_mask)
+        self.assertTrue(np.isfinite(score))
+
+    def test_masked_slice_ssim_ignores_invalid_pixels_outside_eval_mean(self):
+        gt = np.zeros((7, 7, 1), dtype=np.float32)
+        pred = np.zeros((7, 7, 1), dtype=np.float32)
+        global_mask = np.zeros_like(gt, dtype=bool)
+        eval_mask = np.zeros_like(gt, dtype=bool)
+
+        gt[1:6, 1:6, 0] = np.linspace(0.1, 1.0, 25, dtype=np.float32).reshape(5, 5)
+        pred[1:6, 1:6, 0] = gt[1:6, 1:6, 0] * 0.95
+        pred[1, 1, 0] = np.nan
+        global_mask[1:6, 1:6, 0] = True
+        eval_mask[2:6, 2:6, 0] = True
+
+        score = masked_slicewise_ssim(pred, gt, eval_mask, global_mask)
+        self.assertTrue(np.isfinite(score))
+        self.assertGreater(score, 0.0)
+
     def test_safe_crop_bounds_clips_to_image_edges(self):
         mask = np.zeros((10, 12), dtype=bool)
         mask[1:3, 0:2] = True
