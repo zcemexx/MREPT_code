@@ -192,7 +192,7 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
     sns.lineplot(
         data=df_global,
         x="SNR",
-        y="RMSE",
+        y="SSIM",
         hue="Method",
         hue_order=METHOD_ORDER,
         palette=PALETTE,
@@ -200,9 +200,9 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
         errorbar="sd",
         ax=ax2,
     )
-    ax2.set_title("B. Global RMSE vs. SNR", fontweight="bold", loc="left")
+    ax2.set_title("B. Global SSIM vs. SNR", fontweight="bold", loc="left")
     ax2.set_xlabel("SNR")
-    ax2.set_ylabel("Root Mean Square Error (S/m)")
+    ax2.set_ylabel("SSIM")
     legend = ax2.get_legend()
     if legend is not None:
         legend.remove()
