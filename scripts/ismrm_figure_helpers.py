@@ -192,7 +192,7 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
     sns.lineplot(
         data=df_global,
         x="SNR",
-        y="SSIM",
+        y="RMSE",
         hue="Method",
         hue_order=METHOD_ORDER,
         palette=PALETTE,
@@ -200,9 +200,9 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
         errorbar="sd",
         ax=ax2,
     )
-    ax2.set_title("B. Global SSIM vs. SNR", fontweight="bold", loc="left")
+    ax2.set_title("B. Global RMSE vs. SNR", fontweight="bold", loc="left")
     ax2.set_xlabel("SNR")
-    ax2.set_ylabel("SSIM")
+    ax2.set_ylabel("Root Mean Squared Error (S/m)")
     legend = ax2.get_legend()
     if legend is not None:
         legend.remove()
@@ -294,7 +294,8 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
 def make_fig2(arrays: dict[str, np.ndarray]) -> plt.Figure:
     configure_style()
     fig = plt.figure(figsize=(11, 15))
-    grid = fig.add_gridspec(6, 4, left=0.06, right=0.96, top=0.95, bottom=0.12, wspace=0.02, hspace=0.02)
+    fig.patch.set_facecolor("black")
+    grid = fig.add_gridspec(6, 4, left=0.06, right=0.96, top=0.95, bottom=0.12, wspace=0.0, hspace=0.0)
 
     gt = arrays["Simulation/GT_Cond"]
     recon_arrays = [gt]
@@ -316,6 +317,8 @@ def make_fig2(arrays: dict[str, np.ndarray]) -> plt.Figure:
         for col_idx, title in enumerate(["Fixed", "CNN", "Oracle", "GT / Kernel"]):
             ax_recon = fig.add_subplot(grid[recon_row, col_idx])
             ax_detail = fig.add_subplot(grid[detail_row, col_idx])
+            ax_recon.set_facecolor("black")
+            ax_detail.set_facecolor("black")
             ax_recon.axis("off")
             ax_detail.axis("off")
 
@@ -323,40 +326,42 @@ def make_fig2(arrays: dict[str, np.ndarray]) -> plt.Figure:
                 ax_recon.text(
                     -0.13,
                     0.5,
-                    f"SNR {snr}\nRecon",
+                    f"SNR {snr}\nconductivity map",
                     transform=ax_recon.transAxes,
                     va="center",
                     ha="right",
                     fontsize=11,
                     fontweight="bold",
+                    color="white",
                 )
                 ax_detail.text(
                     -0.13,
                     0.5,
-                    f"SNR {snr}\nError / Radius",
+                    f"SNR {snr}\nMAE map / radius",
                     transform=ax_detail.transAxes,
                     va="center",
                     ha="right",
                     fontsize=11,
                     fontweight="bold",
+                    color="white",
                 )
             if recon_row == 0:
-                ax_recon.set_title(title, fontsize=13, fontweight="bold", pad=10)
+                ax_recon.set_title(title, fontsize=13, fontweight="bold", pad=10, color="white")
 
             if col_idx < 3:
                 method = METHOD_ORDER[col_idx]
                 recon = arrays[_sim_key(snr, f"{method}_Cond")]
                 error = np.abs(recon - gt)
-                ax_recon.imshow(recon, cmap="magma", vmin=recon_clim[0], vmax=recon_clim[1])
-                ax_detail.imshow(error, cmap="turbo", vmin=error_clim[0], vmax=error_clim[1])
+                ax_recon.imshow(recon, cmap="jet", vmin=recon_clim[0], vmax=recon_clim[1])
+                ax_detail.imshow(error, cmap="hot", vmin=error_clim[0], vmax=error_clim[1])
             else:
-                ax_recon.imshow(gt, cmap="magma", vmin=recon_clim[0], vmax=recon_clim[1])
+                ax_recon.imshow(gt, cmap="jet", vmin=recon_clim[0], vmax=recon_clim[1])
                 radius = arrays[_sim_key(snr, "CNN_Pred_Radius")]
                 ax_detail.imshow(radius, cmap="viridis", vmin=radius_clim[0], vmax=radius_clim[1])
 
-    _add_horizontal_colorbar(fig, "magma", recon_clim, [0.11, 0.06, 0.22, 0.015], "Conductivity (S/m)")
-    _add_horizontal_colorbar(fig, "turbo", error_clim, [0.40, 0.06, 0.22, 0.015], "|Error| (S/m)")
-    _add_horizontal_colorbar(fig, "viridis", radius_clim, [0.69, 0.06, 0.22, 0.015], "Predicted Radius")
+    _add_horizontal_colorbar(fig, "jet", recon_clim, [0.11, 0.06, 0.22, 0.015], "Conductivity (S/m)", text_color="white", facecolor="black")
+    _add_horizontal_colorbar(fig, "hot", error_clim, [0.40, 0.06, 0.22, 0.015], "MAE map (S/m)", text_color="white", facecolor="black")
+    _add_horizontal_colorbar(fig, "viridis", radius_clim, [0.69, 0.06, 0.22, 0.015], "Predicted Radius", text_color="white", facecolor="black")
     return fig
 
 
@@ -428,10 +433,15 @@ def _add_horizontal_colorbar(
     clim: tuple[float, float],
     rect: Sequence[float],
     label: str,
+    text_color: str = "black",
+    facecolor: str | None = None,
 ) -> None:
     cax = fig.add_axes(rect)
+    if facecolor is not None:
+        cax.set_facecolor(facecolor)
     sm = ScalarMappable(norm=Normalize(vmin=clim[0], vmax=clim[1]), cmap=cmap)
     sm.set_array([])
     cbar = fig.colorbar(sm, cax=cax, orientation="horizontal")
-    cbar.set_label(label, fontsize=10)
-    cbar.ax.tick_params(labelsize=9)
+    cbar.set_label(label, fontsize=10, color=text_color)
+    cbar.ax.tick_params(labelsize=9, color=text_color, labelcolor=text_color)
+    cbar.outline.set_edgecolor(text_color)
