@@ -23,10 +23,10 @@ SNR_ORDER = [10, 20, 30, 40, 50, 75, 100, 150]
 DISPLAY_SNRS = [10, 50, 150]
 FIG1_SNR = 50
 
-PALETTE = {
-    "Fixed": "#d95f02",
-    "CNN": "#1b9e77",
-    "Oracle": "#7570b3",
+FIG1_METHOD_PALETTE = {
+    "Fixed": "#4d4d4d",
+    "CNN": "#c47a00",
+    "Oracle": "#7b5ea7",
 }
 ACC_PALETTE = {
     "Acc1": "#e41a1c",
@@ -176,7 +176,7 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
         y="MAE",
         hue="Method",
         hue_order=METHOD_ORDER,
-        palette=PALETTE,
+        palette=FIG1_METHOD_PALETTE,
         marker="o",
         errorbar="sd",
         ax=ax1,
@@ -192,17 +192,17 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
     sns.lineplot(
         data=df_global,
         x="SNR",
-        y="RMSE",
+        y="SSIM",
         hue="Method",
         hue_order=METHOD_ORDER,
-        palette=PALETTE,
+        palette=FIG1_METHOD_PALETTE,
         marker="s",
         errorbar="sd",
         ax=ax2,
     )
-    ax2.set_title("B. Global RMSE vs. SNR", fontweight="bold", loc="left")
+    ax2.set_title("B. Global SSIM vs. SNR", fontweight="bold", loc="left")
     ax2.set_xlabel("SNR")
-    ax2.set_ylabel("Root Mean Squared Error (S/m)")
+    ax2.set_ylabel("SSIM")
     legend = ax2.get_legend()
     if legend is not None:
         legend.remove()
@@ -241,8 +241,8 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
         hue="Method",
         hue_order=METHOD_ORDER,
         order=REGION_ORDER,
-        palette=PALETTE,
-        width=0.6,
+        palette=FIG1_METHOD_PALETTE,
+        width=0.68,
         fliersize=0,
         boxprops={"alpha": 0.8},
         ax=ax4,
@@ -258,7 +258,8 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
         palette={method: "#202020" for method in METHOD_ORDER},
         alpha=0.45,
         size=3.5,
-        jitter=0.15,
+        jitter=0.08,
+        linewidth=0,
         ax=ax4,
     )
     ax4.set_title(
@@ -281,7 +282,7 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
             [item[1] for item in dedup],
             title="Reconstruction Method",
             loc="upper right",
-            frameon=True,
+            frameon=False,
         )
 
     for ax in [ax1, ax2, ax3]:
@@ -293,9 +294,9 @@ def make_fig1(df: pd.DataFrame) -> plt.Figure:
 
 def make_fig2(arrays: dict[str, np.ndarray]) -> plt.Figure:
     configure_style()
-    fig = plt.figure(figsize=(11, 15))
+    fig = plt.figure(figsize=(13.5, 15))
     fig.patch.set_facecolor("black")
-    grid = fig.add_gridspec(6, 4, left=0.06, right=0.96, top=0.95, bottom=0.12, wspace=0.0, hspace=0.0)
+    grid = fig.add_gridspec(6, 5, left=0.06, right=0.97, top=0.95, bottom=0.12, wspace=0.0, hspace=0.0)
 
     gt = arrays["Simulation/GT_Cond"]
     recon_arrays = [gt]
@@ -306,7 +307,9 @@ def make_fig2(arrays: dict[str, np.ndarray]) -> plt.Figure:
             recon = arrays[_sim_key(snr, f"{method}_Cond")]
             recon_arrays.append(recon)
             error_arrays.append(np.abs(recon - gt))
-        radius_arrays.append(arrays[_sim_key(snr, "CNN_Pred_Radius")])
+        predicted_radius = arrays[_sim_key(snr, "CNN_Pred_Radius")]
+        final_label = predicted_radius - arrays[_diff_key(snr, "Diff_Radius")]
+        radius_arrays.extend([predicted_radius, final_label])
     recon_clim = percentile_clim(recon_arrays, low=1.0, high=99.0)
     error_clim = nonnegative_clim(error_arrays, high=99.0)
     radius_clim = percentile_clim(radius_arrays, low=1.0, high=99.0)
@@ -314,7 +317,9 @@ def make_fig2(arrays: dict[str, np.ndarray]) -> plt.Figure:
     for snr_idx, snr in enumerate(DISPLAY_SNRS):
         recon_row = snr_idx * 2
         detail_row = recon_row + 1
-        for col_idx, title in enumerate(["Fixed", "CNN", "Oracle", "GT / Kernel"]):
+        predicted_radius = arrays[_sim_key(snr, "CNN_Pred_Radius")]
+        final_label = predicted_radius - arrays[_diff_key(snr, "Diff_Radius")]
+        for col_idx, title in enumerate(["Fixed", "CNN", "Oracle", "GT", "Radius Maps"]):
             ax_recon = fig.add_subplot(grid[recon_row, col_idx])
             ax_detail = fig.add_subplot(grid[detail_row, col_idx])
             ax_recon.set_facecolor("black")
@@ -354,14 +359,16 @@ def make_fig2(arrays: dict[str, np.ndarray]) -> plt.Figure:
                 error = np.abs(recon - gt)
                 ax_recon.imshow(recon, cmap="jet", vmin=recon_clim[0], vmax=recon_clim[1])
                 ax_detail.imshow(error, cmap="hot", vmin=error_clim[0], vmax=error_clim[1])
-            else:
+            elif col_idx == 3:
                 ax_recon.imshow(gt, cmap="jet", vmin=recon_clim[0], vmax=recon_clim[1])
-                radius = arrays[_sim_key(snr, "CNN_Pred_Radius")]
-                ax_detail.imshow(radius, cmap="viridis", vmin=radius_clim[0], vmax=radius_clim[1])
+                ax_detail.imshow(gt, cmap="jet", vmin=recon_clim[0], vmax=recon_clim[1])
+            else:
+                ax_recon.imshow(final_label, cmap="viridis", vmin=radius_clim[0], vmax=radius_clim[1])
+                ax_detail.imshow(predicted_radius, cmap="viridis", vmin=radius_clim[0], vmax=radius_clim[1])
 
-    _add_horizontal_colorbar(fig, "jet", recon_clim, [0.11, 0.06, 0.22, 0.015], "Conductivity (S/m)", text_color="white", facecolor="black")
-    _add_horizontal_colorbar(fig, "hot", error_clim, [0.40, 0.06, 0.22, 0.015], "MAE map (S/m)", text_color="white", facecolor="black")
-    _add_horizontal_colorbar(fig, "viridis", radius_clim, [0.69, 0.06, 0.22, 0.015], "Predicted Radius", text_color="white", facecolor="black")
+    _add_horizontal_colorbar(fig, "jet", recon_clim, [0.08, 0.06, 0.22, 0.015], "Conductivity (S/m)", text_color="white", facecolor="black")
+    _add_horizontal_colorbar(fig, "hot", error_clim, [0.39, 0.06, 0.22, 0.015], "MAE map (S/m)", text_color="white", facecolor="black")
+    _add_horizontal_colorbar(fig, "viridis", radius_clim, [0.70, 0.06, 0.22, 0.015], "Radius Label / Kernel", text_color="white", facecolor="black")
     return fig
 
 
@@ -424,6 +431,51 @@ def make_fig3(arrays: dict[str, np.ndarray]) -> plt.Figure:
 
     _add_horizontal_colorbar(fig, "magma", recon_clim, [0.16, 0.045, 0.28, 0.017], "Conductivity (S/m)")
     _add_horizontal_colorbar(fig, "turbo", error_clim, [0.58, 0.045, 0.28, 0.017], "|Error| (S/m)")
+    return fig
+
+
+def make_radius_mae_comparison_figure(arrays: dict[str, np.ndarray]) -> plt.Figure:
+    configure_style()
+    fig = plt.figure(figsize=(9.5, 13))
+    grid = fig.add_gridspec(3, 2, left=0.08, right=0.93, top=0.95, bottom=0.10, wspace=0.04, hspace=0.06)
+
+    radius_diff_arrays = []
+    mae_arrays = []
+    for snr in DISPLAY_SNRS:
+        radius_diff_arrays.append(-(arrays[_diff_key(snr, "Diff_Radius")]))
+        mae_arrays.append(np.abs(arrays[_diff_key(snr, "Diff_Cond")]))
+    radius_abs_max = max(float(np.nanmax(np.abs(arr))) for arr in radius_diff_arrays)
+    radius_clim = (-radius_abs_max, radius_abs_max if radius_abs_max > 0 else 1.0)
+    mae_clim = nonnegative_clim(mae_arrays, high=99.0)
+
+    for row_idx, snr in enumerate(DISPLAY_SNRS):
+        ax_radius = fig.add_subplot(grid[row_idx, 0])
+        ax_mae = fig.add_subplot(grid[row_idx, 1])
+        ax_radius.axis("off")
+        ax_mae.axis("off")
+
+        if row_idx == 0:
+            ax_radius.set_title("Oracle - Pred Radius", fontsize=13, fontweight="bold", pad=10)
+            ax_mae.set_title("MAE Map", fontsize=13, fontweight="bold", pad=10)
+
+        ax_radius.text(
+            -0.10,
+            0.5,
+            f"SNR {snr}",
+            transform=ax_radius.transAxes,
+            va="center",
+            ha="right",
+            fontsize=11,
+            fontweight="bold",
+        )
+
+        radius_diff = -(arrays[_diff_key(snr, "Diff_Radius")])
+        mae_map = np.abs(arrays[_diff_key(snr, "Diff_Cond")])
+        ax_radius.imshow(radius_diff, cmap="coolwarm", vmin=radius_clim[0], vmax=radius_clim[1])
+        ax_mae.imshow(mae_map, cmap="hot", vmin=mae_clim[0], vmax=mae_clim[1])
+
+    _add_horizontal_colorbar(fig, "coolwarm", radius_clim, [0.13, 0.05, 0.28, 0.017], "Oracle - Pred Radius")
+    _add_horizontal_colorbar(fig, "hot", mae_clim, [0.57, 0.05, 0.28, 0.017], "MAE map (S/m)")
     return fig
 
 

@@ -92,6 +92,7 @@ def main() -> int:
 
     output.parent.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(1, 4, figsize=(16, 4.5))
+    fig.patch.set_facecolor("black")
     panels = (
         ("Magnitude", mag_slice, "gray", mag_clim),
         ("CNN Radius", radius_slice, "magma", radius_clim),
@@ -99,13 +100,17 @@ def main() -> int:
         ("Cond Pred", cond_pred_slice, "viridis", cond_clim),
     )
     for ax, (title, data, cmap, clim) in zip(axes, panels):
+        ax.set_facecolor("black")
         image = ax.imshow(data, cmap=cmap, vmin=clim[0], vmax=clim[1])
-        ax.set_title(title)
+        ax.set_title(title, color="white")
         ax.axis("off")
-        fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
+        cbar = fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
+        cbar.ax.set_facecolor("black")
+        cbar.ax.tick_params(color="white", labelcolor="white")
+        cbar.outline.set_edgecolor("white")
 
     fig.tight_layout()
-    fig.savefig(output, dpi=200, bbox_inches="tight")
+    fig.savefig(output, dpi=200, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(output)
     return 0
